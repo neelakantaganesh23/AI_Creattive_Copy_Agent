@@ -1,0 +1,62 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    image: ai-creative-copy-agent-backend:latest
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_NAME: AI Creative Copy Agent
+      DATABASE_URL: sqlite:////app/data/creative_copy.db
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-development-only-insecure-secret-change-me}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      # The frontend is served from the same origin through Nginx, so this only
+      # needs to cover direct browser access during development.
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://localhost:5173}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_FLASH_MODEL: ${GEMINI_FLASH_MODEL:-}
+      GEMINI_PRO_MODEL: ${GEMINI_PRO_MODEL:-}
+      GROUNDING_ENABLED: ${GROUNDING_ENABLED:-false}
+      GROUNDING_PROVIDER: ${GROUNDING_PROVIDER:-none}
+      AUTO_CREATE_TABLES: ${AUTO_CREATE_TABLES:-true}
+      SEED_ON_STARTUP: ${SEED_ON_STARTUP:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      RATE_LIMIT_LOGIN: ${RATE_LIMIT_LOGIN:-10/minute}
+      RATE_LIMIT_GENERATION: ${RATE_LIMIT_GENERATION:-20/hour}
+    volumes:
+      - backend_data:/app/data
+    ports:
+      - '8000:8000'
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:8000/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Same-origin: Nginx proxies /api to the backend service.
+        VITE_API_BASE_URL: /api/v1
+        VITE_ENABLE_GOOGLE_LOGIN: 'false'
+        VITE_ENABLE_DEMO_DATA: ${VITE_ENABLE_DEMO_DATA:-true}
+    image: ai-creative-copy-agent-frontend:latest
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - '8080:80'
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost/']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  backend_data:

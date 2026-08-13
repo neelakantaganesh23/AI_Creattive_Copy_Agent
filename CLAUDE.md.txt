@@ -1,0 +1,1311 @@
+You are a senior full-stack engineer, UX architect, and AI application developer.
+
+Build a complete, production-ready application named:
+
+AI Creative Copy Agent
+
+The application generates audience-specific marketing copy for Email, Mobile, and SMS using a multi-stage AI workflow.
+
+Do not create only a visual prototype. Build a working full-stack application with a responsive React frontend, FastAPI backend, authentication, database persistence, AI integration, validation, testing, logging, and Docker support.
+
+==================================================
+1. PRIMARY OBJECTIVE
+==================================================
+
+Create an AI-powered application where authenticated users can:
+
+1. Enter a raw marketing campaign brief.
+2. Select a brand or product.
+3. Select an output channel.
+4. Select an audience segment.
+5. Optionally select a language.
+6. Generate personalized marketing content.
+7. View the progress of each AI workflow stage.
+8. Review structured Email, Mobile, and SMS outputs.
+9. Copy, regenerate, and download generated content.
+10. View previous generations and execution details.
+
+The interface must look professional, modern, responsive, and suitable for an enterprise marketing platform.
+
+==================================================
+2. REQUIRED TECHNOLOGY STACK
+==================================================
+
+Frontend:
+
+- React 18
+- TypeScript
+- Vite
+- Material UI
+- React Router
+- Axios
+- React Context API or Zustand for application state
+- React Hook Form
+- Zod for frontend validation
+- Lucide React icons
+- Custom responsive CSS or Material UI theme
+
+Backend:
+
+- Python 3.11+
+- FastAPI
+- Uvicorn
+- Pydantic v2
+- SQLAlchemy
+- SQLite for local development
+- Alembic for database migrations
+- PyJWT or python-jose for JWT authentication
+- Passlib with bcrypt for password hashing
+- Google Gemini SDK for AI generation
+- Structured Python logging
+
+Testing:
+
+- Vitest
+- React Testing Library
+- Pytest
+- FastAPI TestClient
+- Ruff for Python linting
+- ESLint and Prettier for frontend quality
+
+Deployment:
+
+- Docker
+- Docker Compose
+- Separate frontend and backend containers
+- Nginx for serving the production frontend
+- Environment-based configuration
+
+==================================================
+3. PROJECT STRUCTURE
+==================================================
+
+Create a clean monorepo structure:
+
+ai-creative-copy-agent/
+  frontend/
+    src/
+      api/
+      assets/
+      components/
+      contexts/
+      hooks/
+      layouts/
+      pages/
+      routes/
+      schemas/
+      services/
+      theme/
+      types/
+      utils/
+    public/
+    tests/
+    Dockerfile
+    nginx.conf
+    package.json
+    vite.config.ts
+    tsconfig.json
+    .env.example
+
+  backend/
+    app/
+      api/
+        routes/
+      agents/
+      core/
+      database/
+      models/
+      repositories/
+      schemas/
+      services/
+      utils/
+      main.py
+    alembic/
+    tests/
+    Dockerfile
+    requirements.txt
+    alembic.ini
+    .env.example
+
+  docker-compose.yml
+  .gitignore
+  README.md
+
+Use separation of concerns. Do not place the entire application in one React component or one Python file.
+
+==================================================
+4. APPLICATION BRANDING AND DESIGN SYSTEM
+==================================================
+
+Application name:
+
+AI Creative Copy Agent
+
+Visual style:
+
+- Modern enterprise SaaS interface
+- Clean white content area
+- Dark navy sidebar
+- Purple gradient primary actions
+- Subtle borders and shadows
+- High readability
+- Generous spacing
+- Rounded cards
+- Minimal animations
+- Responsive on desktop, tablet, and mobile
+
+Colors:
+
+- Sidebar background: #10183B
+- Sidebar secondary: #18214A
+- Primary purple: #6548E8
+- Secondary purple: #8C5CF6
+- Light purple background: #F4F1FF
+- Page background: #F7F8FC
+- Primary text: #11182F
+- Secondary text: #667085
+- Border: #E5E7EF
+- Success: #22A861
+- Warning: #F79009
+- Error: #D92D20
+
+Typography:
+
+- Use Inter, DM Sans, or Manrope.
+- Clear visual hierarchy.
+- Accessible font sizes and color contrast.
+
+Create a centralized Material UI theme.
+
+==================================================
+5. LOGIN PAGE
+==================================================
+
+Create a split-screen login page.
+
+Left section:
+
+- Dark navy and purple gradient background.
+- AI Creative Copy Agent logo.
+- Main heading:
+  "AI-Powered Marketing Copy That Connects and Converts"
+- Supporting text:
+  "Generate channel-ready, audience-specific marketing content in seconds with our multi-agent AI platform."
+- Display three feature blocks:
+
+  1. Audience-Focused
+     "Create personalized copy that resonates with every audience segment."
+
+  2. Multi-Channel Support
+     "Generate content for Email, Mobile, and SMS effortlessly."
+
+  3. AI-Grounded & Unique
+     "Real-world insights, repetition checks, and CTA optimization built in."
+
+- Add subtle decorative waves or abstract purple patterns.
+- Avoid heavy background images.
+
+Right section:
+
+- Centered white login card.
+- Logo icon.
+- Heading: "Welcome Back"
+- Subheading: "Sign in to continue to your account"
+- Email input with icon.
+- Password input with visibility toggle.
+- Remember me checkbox.
+- Forgot password link.
+- Purple gradient Sign In button.
+- Optional Google sign-in button as a disabled or configurable feature.
+- Create account link.
+- Loading state.
+- Validation messages.
+- Authentication error message.
+- Responsive mobile layout where the form is shown first and the left information panel is reduced or hidden.
+
+Authentication behavior:
+
+- POST /api/v1/auth/login
+- Store the access token securely.
+- Prefer an HttpOnly cookie architecture if supported.
+- If bearer tokens are used, keep token handling isolated in the API client.
+- Add Axios interceptors.
+- Redirect authenticated users to /dashboard.
+- Redirect unauthenticated users to /login.
+- Do not hard-code credentials.
+- Provide a development seed user and document the credentials in README.
+
+==================================================
+6. APPLICATION SHELL
+==================================================
+
+After login, display:
+
+Sidebar:
+
+- AI Creative Copy Agent logo
+- Dashboard
+- Generate Copy
+- History
+- Templates
+- Brands & Products
+- Audience Segments
+- CTA Rules
+- Logs & Analytics
+- Settings
+- Logged-in user summary
+- Logout button
+
+Header:
+
+- Current page title
+- Short page description
+- Help menu
+- Notification icon
+- User avatar and menu
+
+The sidebar must collapse into a mobile drawer on smaller screens.
+
+==================================================
+7. DASHBOARD PAGE
+==================================================
+
+Route:
+
+/dashboard
+
+Display four summary cards:
+
+1. Copies Generated
+2. Audience Segments
+3. Channels Supported
+4. Average Generation Time
+
+Create a campaign brief section containing:
+
+- Raw marketing brief textarea
+- Brand or product selector
+- Channel selector
+- Audience segment selector
+- Optional language selector
+- Generate Copy button
+
+Create a Generation Workflow panel showing:
+
+1. Data Extraction
+2. Web Search Grounding
+3. Copy Generation
+4. Repetition Fix
+5. CTA Optimization
+6. Output Parsing & Logging
+
+Each workflow step must display one of these states:
+
+- Pending
+- In Progress
+- Completed
+- Failed
+
+Create a Recent Generations table with:
+
+- Campaign or brief name
+- Brand or product
+- Channel
+- Audience segment
+- Generated date
+- Status
+- View action
+
+Create a Supported Channels card:
+
+- Email
+- Mobile
+- SMS
+
+Dashboard metrics must come from backend APIs. Do not hard-code dashboard statistics except in development seed data.
+
+==================================================
+8. GENERATE COPY PAGE
+==================================================
+
+Route:
+
+/generate
+
+Create a two-column desktop layout.
+
+Left panel:
+
+Campaign Brief
+
+Fields:
+
+- Raw marketing brief
+- Brand or product
+- Channel
+- Audience segment
+- Language
+- Generate Copy
+- Clear Form
+- Regenerate, available after successful generation
+
+Raw brief requirements:
+
+- Required
+- Minimum 20 characters
+- Maximum 4,000 characters
+- Character counter
+- Helpful placeholder
+- Inline validation
+
+Sample campaign brief:
+
+"We are launching the new AeroFlex Running Shoes. The shoes are lightweight, breathable, and built for speed and comfort. The product is designed for everyday runners and athletes who want performance with modern style. AeroFlex Running Shoes are available in four colorways.
+
+Key message: Run lighter. Go farther. Feel unstoppable.
+
+Promote the launch with an exciting and energetic tone. Highlight comfort, durability, responsive cushioning, and modern design."
+
+Default sample selections for development mode:
+
+- Brand/Product: AeroFlex Running Shoes
+- Channel: Email
+- Audience Segment: Performance Seekers
+- Language: English
+
+Right panel:
+
+Generation Workflow
+
+Show each workflow stage in a vertical stepper:
+
+1. Data Extraction
+   "Extracting brand, products, SKUs and athlete mentions"
+
+2. Web Search Grounding
+   "Finding relevant real-world context"
+
+3. Copy Generation
+   "Generating personalized marketing copy"
+
+4. Repetition Fix
+   "Checking and fixing repetitive content"
+
+5. CTA Optimization
+   "Applying CTA rules and brand guidelines"
+
+6. Output Parsing & Logging
+   "Parsing output and logging execution details"
+
+Display live progress where possible. If true streaming is not implemented initially, poll the backend generation-status endpoint.
+
+The UI must handle:
+
+- Pending state
+- Loading state
+- Step progress
+- Completed state
+- Partial failure
+- Full failure
+- Retry
+- API timeout
+- Invalid structured AI output
+
+==================================================
+9. GENERATED COPY SECTION
+==================================================
+
+Display the generated content below the form.
+
+Tabs:
+
+- Email
+- Mobile
+- SMS
+
+Email output:
+
+- Headline
+- Sub-heading
+- Call to Action
+
+Mobile output:
+
+- Superline
+- Pre-heading
+- Headline
+- Sub-heading
+- Call to Action
+
+SMS output:
+
+- Promotional description
+
+Provide:
+
+- Copy individual field
+- Copy all
+- Regenerate
+- Download as JSON
+- Download as TXT
+- Display creation timestamp
+- Display generation duration
+- Display audience segment
+- Display channel
+- Display quality-check status
+
+Sample Email result:
+
+Headline:
+"Run Lighter. Go Farther. Feel Unstoppable."
+
+Sub-heading:
+"Introducing AeroFlex Running Shoes, engineered for responsive speed, built for lasting comfort, and designed for every run."
+
+CTA:
+"SHOP AEROFLEX RUNNING SHOES"
+
+Create an Email Preview card showing how the generated content could appear in a campaign. Use a neutral product placeholder or CSS illustration. Do not depend on copyrighted external product imagery.
+
+Add a notice:
+
+"AI-generated content should be reviewed and validated against your brand guidelines before publishing."
+
+==================================================
+10. SUPPORTED TAXONOMIES
+==================================================
+
+Channels:
+
+1. Email
+2. Mobile
+3. SMS
+
+Audience segments:
+
+1. Trendsetters
+   Style-forward customers looking for distinctive products.
+
+2. Enthusiasts
+   Passionate customers focused on product details and exclusivity.
+
+3. Performance Seekers
+   Active customers prioritizing function, reliability, and performance.
+
+4. General / All
+   Broad audiences valuing style, comfort, quality, and versatility.
+
+Create database seed data for these values.
+
+Allow administrators to add, edit, activate, and deactivate:
+
+- Brands
+- Products
+- Audience segments
+- CTA rules
+- Templates
+
+==================================================
+11. BACKEND API DESIGN
+==================================================
+
+Use the base path:
+
+/api/v1
+
+Authentication:
+
+POST /auth/register
+POST /auth/login
+POST /auth/refresh
+POST /auth/logout
+GET /auth/me
+
+Generation:
+
+POST /generations
+GET /generations
+GET /generations/{generation_id}
+GET /generations/{generation_id}/status
+POST /generations/{generation_id}/regenerate
+DELETE /generations/{generation_id}
+
+Dashboard:
+
+GET /dashboard/summary
+GET /dashboard/recent
+
+Brands and products:
+
+GET /brands
+POST /brands
+PUT /brands/{brand_id}
+DELETE /brands/{brand_id}
+
+GET /products
+POST /products
+PUT /products/{product_id}
+DELETE /products/{product_id}
+
+Audience segments:
+
+GET /audience-segments
+POST /audience-segments
+PUT /audience-segments/{segment_id}
+DELETE /audience-segments/{segment_id}
+
+CTA rules:
+
+GET /cta-rules
+POST /cta-rules
+PUT /cta-rules/{rule_id}
+DELETE /cta-rules/{rule_id}
+
+Templates:
+
+GET /templates
+POST /templates
+PUT /templates/{template_id}
+DELETE /templates/{template_id}
+
+Logs:
+
+GET /execution-logs
+GET /execution-logs/{log_id}
+
+Add pagination, filtering, ordering, and appropriate HTTP response codes.
+
+Generate OpenAPI documentation automatically through FastAPI.
+
+==================================================
+12. MULTI-STAGE AI WORKFLOW
+==================================================
+
+Implement the workflow as modular services or agents.
+
+Agent 1: Data Extraction
+
+Input:
+
+- Raw campaign brief
+
+Responsibilities:
+
+- Extract brand
+- Extract product names
+- Extract possible SKUs
+- Extract athlete or public-figure references only when explicitly present
+- Extract campaign goal
+- Extract product features
+- Extract campaign tone
+
+Use a low-latency Gemini model.
+
+Return validated structured JSON.
+
+Agent 2: Web Search Grounding
+
+Responsibilities:
+
+- Search only when grounding is enabled.
+- Search only relevant products, athletes, campaigns, or public information identified during extraction.
+- Record sources separately.
+- Never insert unsupported factual claims.
+- If grounding is unavailable, continue using only the supplied campaign brief and clearly label the generation as not externally grounded.
+
+Place the grounding provider behind an interface so it can be replaced.
+
+Agent 3: Copy Generation
+
+Input:
+
+- Extracted data
+- Grounding results
+- Channel rules
+- Audience profile
+- Brand guidelines
+- Previously generated copy for other audience segments
+- Language
+- Tone
+
+Use a higher-quality Gemini model.
+
+Return strict structured JSON matching the selected channel schema.
+
+Agent 4: Repetition Fix
+
+Responsibilities:
+
+- Compare the new output with recent cached outputs.
+- Detect repeated sentences, phrases, and excessive lexical similarity.
+- Rewrite only when similarity exceeds a configurable threshold.
+- Preserve the original campaign meaning.
+- Do not rewrite the deterministic CTA.
+
+Agent 5: CTA Optimization
+
+Use deterministic business rules.
+
+Examples:
+
+- Product selected:
+  "SHOP [PRODUCT NAME]"
+
+- Brand selected:
+  "EXPLORE [BRAND NAME]"
+
+- No product or brand:
+  "SHOP THE COLLECTION"
+
+Store CTA rules in the database.
+
+Agent 6: Output Parsing and Logging
+
+Responsibilities:
+
+- Validate final structured output using Pydantic.
+- Record execution time.
+- Record model names.
+- Record individual agent status.
+- Record recoverable errors.
+- Store output in the database.
+- Cache recent generations for repetition analysis.
+- Never log passwords, access tokens, API keys, or sensitive request headers.
+
+==================================================
+13. AI OUTPUT SCHEMAS
+==================================================
+
+Use explicit Pydantic schemas.
+
+Email:
+
+{
+  "headline": "string",
+  "sub_heading": "string",
+  "cta": "string"
+}
+
+Mobile:
+
+{
+  "superline": "string",
+  "pre_heading": "string",
+  "headline": "string",
+  "sub_heading": "string",
+  "cta": "string"
+}
+
+SMS:
+
+{
+  "description": "string"
+}
+
+Validate recommended limits:
+
+Email:
+
+- Headline: maximum 80 characters
+- Sub-heading: maximum 160 characters
+- CTA: maximum 40 characters
+
+Mobile:
+
+- Superline: maximum 30 characters
+- Pre-heading: maximum 50 characters
+- Headline: maximum 70 characters
+- Sub-heading: maximum 140 characters
+- CTA: maximum 40 characters
+
+SMS:
+
+- Description: maximum 160 characters by default
+
+Make limits configurable.
+
+If the model returns invalid JSON:
+
+1. Attempt one controlled repair.
+2. Revalidate the repaired result.
+3. Return a structured error if validation still fails.
+4. Preserve debugging information in internal logs without exposing sensitive details to the frontend.
+
+==================================================
+14. DATABASE DESIGN
+==================================================
+
+Create SQLAlchemy models for:
+
+User:
+
+- id
+- name
+- email
+- password_hash
+- role
+- is_active
+- created_at
+- updated_at
+
+Brand:
+
+- id
+- name
+- description
+- guidelines
+- is_active
+- created_at
+- updated_at
+
+Product:
+
+- id
+- brand_id
+- name
+- sku
+- description
+- features
+- is_active
+- created_at
+- updated_at
+
+AudienceSegment:
+
+- id
+- name
+- description
+- tone_guidance
+- is_active
+- created_at
+- updated_at
+
+CTARule:
+
+- id
+- brand_id
+- product_id
+- channel
+- template
+- priority
+- is_active
+- created_at
+- updated_at
+
+Template:
+
+- id
+- name
+- channel
+- description
+- prompt_template
+- is_active
+- created_at
+- updated_at
+
+Generation:
+
+- id
+- user_id
+- brief
+- brand_id
+- product_id
+- audience_segment_id
+- channel
+- language
+- status
+- output_json
+- grounded
+- execution_time_ms
+- created_at
+- updated_at
+
+AgentExecution:
+
+- id
+- generation_id
+- agent_name
+- sequence
+- status
+- input_summary
+- output_json
+- error_message
+- duration_ms
+- started_at
+- completed_at
+
+GroundingSource:
+
+- id
+- generation_id
+- title
+- url
+- source_type
+- retrieved_at
+
+RefreshToken or Session:
+
+- id
+- user_id
+- token_hash
+- expires_at
+- revoked_at
+- created_at
+
+Use UTC timestamps.
+
+Create Alembic migrations and development seed scripts.
+
+==================================================
+15. SECURITY REQUIREMENTS
+==================================================
+
+Implement:
+
+- Password hashing with bcrypt
+- JWT access and refresh tokens
+- Configurable token expiration
+- Role-based authorization
+- Protected API routes
+- CORS configuration using environment variables
+- Request size limits
+- Input validation
+- Secure error responses
+- Rate limiting for login and generation routes
+- API-key protection through environment variables
+- No API keys in frontend code
+- No secrets committed to source control
+- Sanitized logs
+- Generic authentication errors
+- Security headers in Nginx
+- Safe handling of AI-generated content
+
+Roles:
+
+- admin
+- marketer
+- viewer
+
+Permissions:
+
+- Admin can manage taxonomies, CTA rules, users, and logs.
+- Marketer can create and manage generations.
+- Viewer can view permitted generation history.
+
+Do not store raw passwords.
+
+==================================================
+16. ERROR HANDLING
+==================================================
+
+Create a standardized API error structure:
+
+{
+  "error": {
+    "code": "GENERATION_FAILED",
+    "message": "Unable to generate campaign copy.",
+    "details": null,
+    "request_id": "unique-request-id"
+  }
+}
+
+Handle:
+
+- Invalid credentials
+- Expired token
+- Missing API key
+- Model timeout
+- Model quota exceeded
+- Invalid AI JSON
+- Grounding failure
+- Database failure
+- Duplicate email
+- Missing resource
+- Permission denied
+- Invalid channel
+- Invalid audience segment
+- Network failure
+
+Frontend errors must be clear and actionable.
+
+Do not expose stack traces to users.
+
+==================================================
+17. ACCESSIBILITY AND RESPONSIVENESS
+==================================================
+
+Meet WCAG 2.1 AA principles where practical.
+
+Include:
+
+- Keyboard navigation
+- Visible focus states
+- Semantic HTML
+- Accessible form labels
+- ARIA labels for icon buttons
+- Screen-reader-friendly status updates
+- Adequate color contrast
+- Reduced-motion support
+- Responsive layouts
+
+Breakpoints:
+
+- Desktop: 1200px and above
+- Tablet: 768px to 1199px
+- Mobile: below 768px
+
+On mobile:
+
+- Convert sidebar to drawer.
+- Stack generation form and workflow.
+- Make content cards full width.
+- Keep primary actions easy to reach.
+- Avoid horizontal scrolling.
+
+==================================================
+18. TESTING REQUIREMENTS
+==================================================
+
+Backend tests:
+
+- Registration
+- Login
+- Invalid login
+- Token refresh
+- Protected route access
+- Generation creation
+- Generation schema validation
+- CTA override behavior
+- Repetition detection
+- Generation history
+- Role-based access
+- AI provider failure
+- Invalid AI response repair
+- Database persistence
+
+Frontend tests:
+
+- Login validation
+- Successful login redirect
+- Authentication error
+- Protected route
+- Campaign brief validation
+- Channel selection
+- Audience selection
+- Generation loading state
+- Workflow status display
+- Generated output rendering
+- Copy action
+- API failure state
+- Mobile navigation behavior
+
+Mock Gemini calls during automated tests.
+
+Target meaningful test coverage, especially for authentication, generation orchestration, and output validation.
+
+==================================================
+19. ENVIRONMENT VARIABLES
+==================================================
+
+Backend .env.example:
+
+APP_ENV=development
+APP_NAME=AI Creative Copy Agent
+APP_HOST=0.0.0.0
+APP_PORT=8000
+DATABASE_URL=sqlite:///./creative_copy.db
+JWT_SECRET_KEY=replace-with-a-secure-key
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=7
+GEMINI_API_KEY=
+GEMINI_FLASH_MODEL=
+GEMINI_PRO_MODEL=
+GROUNDING_ENABLED=false
+CORS_ORIGINS=http://localhost:5173
+LOG_LEVEL=INFO
+RATE_LIMIT_GENERATION=20/hour
+RATE_LIMIT_LOGIN=10/minute
+
+Frontend .env.example:
+
+VITE_APP_NAME=AI Creative Copy Agent
+VITE_API_BASE_URL=http://localhost:8000/api/v1
+VITE_ENABLE_GOOGLE_LOGIN=false
+VITE_ENABLE_DEMO_DATA=true
+
+Do not invent model identifiers if the correct identifier is not configured. Read model names from environment variables.
+
+==================================================
+20. DOCKER AND LOCAL DEVELOPMENT
+==================================================
+
+Create:
+
+- Backend Dockerfile
+- Frontend Dockerfile
+- Nginx configuration
+- docker-compose.yml
+- Persistent database volume
+- Health checks
+- Container restart policy
+- Development instructions
+- Production build instructions
+
+Required commands:
+
+Local frontend:
+
+npm install
+npm run dev
+
+Local backend:
+
+python -m venv .venv
+
+Windows PowerShell:
+
+.venv\Scripts\Activate.ps1
+
+macOS/Linux:
+
+source .venv/bin/activate
+
+Then:
+
+pip install -r requirements.txt
+alembic upgrade head
+uvicorn app.main:app --reload
+
+Docker:
+
+docker compose up --build
+
+Expected URLs:
+
+- Frontend: http://localhost:5173
+- Backend: http://localhost:8000
+- OpenAPI docs: http://localhost:8000/docs
+
+==================================================
+21. DEVELOPMENT MODE
+==================================================
+
+The application must work without a Gemini API key in development mode.
+
+Create a mock AI provider that:
+
+- Simulates workflow timing.
+- Returns deterministic sample output.
+- Supports Email, Mobile, and SMS.
+- Allows the complete interface to be tested.
+- Clearly indicates in logs that mock generation is being used.
+
+Do not mix mock provider code with the real provider implementation.
+
+Use a provider interface, for example:
+
+- AIProvider
+- GeminiAIProvider
+- MockAIProvider
+
+Select the provider using configuration.
+
+Seed development data:
+
+Admin user:
+
+- Email: admin@example.com
+- Password: ChangeMe123!
+
+Marketer user:
+
+- Email: marketer@example.com
+- Password: ChangeMe123!
+
+Document clearly that these credentials are only for local development and must be changed or disabled in production.
+
+==================================================
+22. OBSERVABILITY
+==================================================
+
+Add:
+
+- Request IDs
+- Structured logs
+- Generation IDs
+- Agent-level duration
+- Total generation duration
+- Error category
+- Model used
+- Grounding enabled status
+- Health endpoint
+- Readiness endpoint
+
+Endpoints:
+
+GET /health
+GET /ready
+
+Never log:
+
+- Passwords
+- Access tokens
+- Refresh tokens
+- Gemini API keys
+- Authorization headers
+
+==================================================
+23. IMPLEMENTATION APPROACH
+==================================================
+
+Work in the following order:
+
+Phase 1:
+
+- Inspect the current repository.
+- Create or refine the monorepo structure.
+- Configure frontend and backend foundations.
+- Add environment examples.
+- Add linting and formatting.
+
+Phase 2:
+
+- Implement database models.
+- Implement migrations.
+- Implement seed data.
+- Implement authentication.
+- Add authentication tests.
+
+Phase 3:
+
+- Build the login page.
+- Build the protected application shell.
+- Build the dashboard page.
+- Build the generate-copy page.
+
+Phase 4:
+
+- Implement the mock AI workflow.
+- Implement workflow status tracking.
+- Implement structured output validation.
+- Connect the frontend to backend APIs.
+
+Phase 5:
+
+- Implement Gemini provider.
+- Implement optional grounding provider.
+- Implement repetition control.
+- Implement deterministic CTA rules.
+
+Phase 6:
+
+- Implement history and detailed generation views.
+- Implement taxonomy management.
+- Implement logs and analytics views.
+
+Phase 7:
+
+- Add complete tests.
+- Add Docker support.
+- Run linting, build, and tests.
+- Fix all blocking issues.
+- Complete README documentation.
+
+==================================================
+24. CLAUDE CODE EXECUTION RULES
+==================================================
+
+Follow these rules while implementing:
+
+1. Start by inspecting the repository and listing the existing files.
+2. Preserve useful existing code.
+3. Do not delete files unless replacement is necessary.
+4. Before editing, briefly state the implementation plan.
+5. Work incrementally and keep the application runnable.
+6. Use strict TypeScript.
+7. Avoid the TypeScript any type unless documented and unavoidable.
+8. Use typed API request and response models.
+9. Keep React components small and reusable.
+10. Keep business logic out of presentation components.
+11. Keep route handlers thin.
+12. Move backend logic into services and repositories.
+13. Use dependency injection for database sessions and AI providers.
+14. Do not hard-code secrets or environment-specific URLs.
+15. Do not silently ignore errors.
+16. Do not leave placeholder TODO comments for essential features.
+17. Do not claim a command succeeded unless the command was executed successfully.
+18. Run tests after significant changes.
+19. Fix TypeScript, linting, build, and test errors.
+20. If an external API is unavailable, use the mock provider rather than leaving the application broken.
+21. Make reasonable technical decisions without repeatedly requesting confirmation.
+22. Ask a question only when a missing detail blocks implementation.
+23. Use secure, maintainable, production-oriented patterns.
+24. Ensure all generated and edited files are included in the final summary.
+
+==================================================
+25. REQUIRED FINAL VALIDATION
+==================================================
+
+Before reporting completion, run and report the results of:
+
+Frontend:
+
+npm install
+npm run lint
+npm run test
+npm run build
+
+Backend:
+
+pip install -r requirements.txt
+ruff check .
+pytest
+alembic upgrade head
+
+Docker:
+
+docker compose config
+docker compose build
+
+Also validate:
+
+- Login works.
+- Logout works.
+- Protected routes work.
+- Dashboard data loads.
+- Campaign generation works with the mock provider.
+- Email output works.
+- Mobile output works.
+- SMS output works.
+- Workflow progress is visible.
+- Generated output is stored.
+- Generation history loads.
+- CTA rules are applied.
+- Invalid AI JSON is handled.
+- Mobile layout works.
+- Environment files contain no real secrets.
+
+If a tool or dependency is unavailable, explain exactly which validation could not be performed and why. Do not report unexecuted validation as successful.
+
+==================================================
+26. REQUIRED FINAL RESPONSE
+==================================================
+
+When implementation is complete, provide:
+
+1. Concise implementation summary.
+2. Final folder structure.
+3. Major features completed.
+4. Database migration instructions.
+5. Local startup instructions for Windows PowerShell.
+6. Local startup instructions for macOS/Linux.
+7. Docker startup instructions.
+8. Development login credentials.
+9. Gemini configuration instructions.
+10. API endpoint summary.
+11. Test and build results.
+12. Known limitations.
+13. Recommended next production steps.
+
+Begin by inspecting the repository and implementing the foundation. Continue through the phases without stopping after creating only a plan.
