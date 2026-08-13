@@ -34,8 +34,14 @@ def hash_password(password: str) -> str:
     return bcrypt.hashpw(encoded, bcrypt.gensalt(rounds=settings.bcrypt_rounds)).decode("utf-8")
 
 
-def verify_password(password: str, password_hash: str) -> bool:
-    """Constant-time password check. Never raises on malformed input."""
+def verify_password(password: str, password_hash: str | None) -> bool:
+    """Constant-time password check. Never raises on malformed input.
+
+    A ``None`` hash means the account has no password (identity-provider only),
+    which can never be satisfied by a password login.
+    """
+    if not password_hash:
+        return False
     try:
         encoded = password.encode("utf-8")
         if len(encoded) > MAX_PASSWORD_BYTES:
@@ -97,6 +103,11 @@ def create_refresh_token() -> tuple[str, str, datetime]:
     token = secrets.token_urlsafe(48)
     expires_at = datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
     return token, hash_token(token), expires_at
+
+
+def create_url_safe_token(length: int = 48) -> str:
+    """Opaque token for links delivered by email."""
+    return secrets.token_urlsafe(length)
 
 
 def hash_token(token: str) -> str:

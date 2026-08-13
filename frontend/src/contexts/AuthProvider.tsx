@@ -51,6 +51,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }): JSX.Element
     [],
   );
 
+  const loginWithGoogle = useCallback(async (credential: string): Promise<User> => {
+    try {
+      const session = await authApi.loginWithGoogle(credential);
+      setUser(session.user);
+      return session.user;
+    } catch (error) {
+      throw toApiError(error);
+    }
+  }, []);
+
   const register = useCallback(
     async (name: string, email: string, password: string): Promise<User> => {
       try {
@@ -80,11 +90,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }): JSX.Element
       isAuthenticated: user !== null,
       isInitialising,
       login,
+      loginWithGoogle,
       register,
       logout,
       hasRole,
     }),
-    [user, isInitialising, login, register, logout, hasRole],
+    [user, isInitialising, login, loginWithGoogle, register, logout, hasRole],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

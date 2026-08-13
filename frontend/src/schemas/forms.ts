@@ -44,9 +44,34 @@ export const campaignBriefSchema = z.object({
   channel: z.enum(['email', 'mobile', 'sms'], {
     errorMap: () => ({ message: 'Select a channel.' }),
   }),
-  productId: z.string().default(''),
+  // Encoded as "brand:<id>" or "product:<id>" so one control can offer both.
+  brandOrProduct: z.string().default(''),
   audienceSegmentId: z.string().default(''),
   language: z.string().default('English'),
 });
 
 export type CampaignBriefFormValues = z.infer<typeof campaignBriefSchema>;
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().min(1, 'Email address is required.').email('Enter a valid email address.'),
+});
+
+export type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z
+  .object({
+    password: z
+      .string()
+      .min(8, 'Use at least 8 characters.')
+      .max(72, 'Use at most 72 characters.')
+      .refine((value) => /[A-Za-z]/.test(value) && /\d/.test(value), {
+        message: 'Include at least one letter and one number.',
+      }),
+    confirmPassword: z.string(),
+  })
+  .refine((values) => values.password === values.confirmPassword, {
+    message: 'Passwords do not match.',
+    path: ['confirmPassword'],
+  });
+
+export type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>;

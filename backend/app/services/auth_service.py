@@ -67,6 +67,7 @@ class AuthService:
             password, user.password_hash if user else _DUMMY_PASSWORD_HASH
         )
         if not user or not password_ok:
+            # Includes identity-provider accounts, which hold no password hash.
             logger.warning("failed login attempt")
             raise AuthenticationError()
         if not user.is_active:

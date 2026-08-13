@@ -5,12 +5,14 @@ from app.models.enums import (
     AGENT_SEQUENCE,
     AgentName,
     AgentStatus,
+    AuthProvider,
     Channel,
     GenerationStatus,
     QualityStatus,
     Role,
 )
 from app.models.generation import AgentExecution, Generation, GroundingSource
+from app.models.password_reset import PasswordResetToken
 from app.models.refresh_token import RefreshToken
 from app.models.taxonomy import AudienceSegment, Brand, CTARule, Product, Template
 from app.models.user import User
@@ -22,12 +24,14 @@ __all__ = [
     "AgentName",
     "AgentStatus",
     "AudienceSegment",
+    "AuthProvider",
     "Brand",
     "CTARule",
     "Channel",
     "Generation",
     "GenerationStatus",
     "GroundingSource",
+    "PasswordResetToken",
     "Product",
     "QualityStatus",
     "RefreshToken",

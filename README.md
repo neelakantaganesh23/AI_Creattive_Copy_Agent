@@ -84,6 +84,49 @@ controlled by `AUTO_CREATE_TABLES` and `SEED_ON_STARTUP`, which must be `false` 
 > `SEED_ON_STARTUP=false` and change `SEED_ADMIN_PASSWORD` / `SEED_MARKETER_PASSWORD` before any
 > deployment. `APP_ENV=production` refuses to boot with seeding enabled.
 
+### Google sign-in
+
+Off until a client id is configured; the login screen hides the button to match.
+
+1. Google Cloud console → **APIs & Services → Credentials → Create OAuth client ID → Web
+   application**.
+2. Add `http://localhost:5173` under **Authorised JavaScript origins**. No redirect URI is
+   needed — this uses the Identity Services token flow, not the redirect flow.
+3. Put the client id in `backend/.env`:
+
+```dotenv
+GOOGLE_CLIENT_ID=your-id.apps.googleusercontent.com
+GOOGLE_DEFAULT_ROLE=marketer
+```
+
+The browser obtains a signed ID token, the backend verifies it against Google's public keys,
+and then issues the same access + refresh tokens as a password login. There is no client secret.
+First-time sign-ins are provisioned automatically with `GOOGLE_DEFAULT_ROLE`; if the address
+already has a local account, Google is linked to it and the existing password keeps working.
+Accounts created this way hold no password at all, so a password login can never succeed for
+them.
+
+### Password reset
+
+Always available. The request endpoint returns the same response whether or not the address
+exists, so it cannot be used to discover accounts. Tokens are single use, expire after
+`PASSWORD_RESET_EXPIRE_MINUTES` (default 30), are stored only as SHA-256 hashes, and completing
+a reset revokes every active session.
+
+Delivery sits behind an interface. **The default `console` provider prints the email to the
+server log instead of sending it**, which keeps local development credential free — copy the
+link from your backend terminal. For real delivery:
+
+```dotenv
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=re_your_key
+EMAIL_FROM=Your Product <no-reply@yourdomain.com>
+FRONTEND_BASE_URL=https://your-frontend-domain
+```
+
+`EMAIL_PROVIDER=smtp` is also supported via the `SMTP_*` settings. Never leave `console` enabled
+in production.
+
 ### Roles
 
 | Role | Permissions |
@@ -108,11 +151,12 @@ controlled by `AUTO_CREATE_TABLES` and `SEED_ON_STARTUP`, which must be `false` 
 │   │   ├── repositories/     # Data access
 │   │   ├── schemas/          # Pydantic request/response/AI-output schemas
 │   │   ├── services/         # Auth, generation orchestration, dashboard
-│   │   │   └── ai/           # AIProvider protocol, mock, Gemini, grounding, factory
+│   │   │   ├── ai/           # AIProvider protocol, mock, Gemini, grounding, factory
+│   │   │   └── email/        # EmailSender: console, Resend, SMTP
 │   │   ├── utils/            # Text similarity, JSON repair
 │   │   └── main.py           # App factory, middleware, exception handlers
-│   ├── alembic/versions/     # 0001_initial_schema.py
-│   ├── tests/                # 85 pytest tests
+│   ├── alembic/versions/     # 0001 initial schema, 0002 google + password reset
+│   ├── tests/                # 117 pytest tests
 │   ├── Dockerfile
 │   ├── alembic.ini
 │   ├── pyproject.toml        # ruff + pytest configuration
@@ -135,7 +179,7 @@ controlled by `AUTO_CREATE_TABLES` and `SEED_ON_STARTUP`, which must be `false` 
 │   │   ├── theme/            # Material UI theme and design tokens
 │   │   ├── types/            # API model types
 │   │   └── utils/            # Formatting helpers
-│   ├── tests/                # 48 Vitest + React Testing Library tests
+│   ├── tests/                # 60 Vitest + React Testing Library tests
 │   ├── Dockerfile
 │   ├── nginx.conf
 │   ├── eslint.config.js
@@ -202,7 +246,7 @@ Base path `/api/v1`. Full interactive documentation at `/docs`.
 
 | Area | Endpoints |
 | --- | --- |
-| Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me` |
+| Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/google`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `GET /auth/options`, `POST /auth/password-reset/request`, `POST /auth/password-reset/confirm` |
 | Generations | `POST /generations`, `GET /generations`, `GET /generations/{id}`, `GET /generations/{id}/status`, `POST /generations/{id}/regenerate`, `DELETE /generations/{id}` |
 | Dashboard | `GET /dashboard/summary`, `GET /dashboard/recent` |
 | Brands | `GET/POST /brands`, `GET/PUT/DELETE /brands/{id}` |
@@ -233,8 +277,9 @@ The same request id is returned in the `X-Request-ID` header and attached to eve
 
 ## Database and migrations
 
-Ten tables: `users`, `refresh_tokens`, `brands`, `products`, `audience_segments`, `cta_rules`,
-`templates`, `generations`, `agent_executions`, `grounding_sources`. All timestamps are UTC.
+Eleven tables: `users`, `refresh_tokens`, `password_reset_tokens`, `brands`, `products`,
+`audience_segments`, `cta_rules`, `templates`, `generations`, `agent_executions`,
+`grounding_sources`. All timestamps are UTC.
 
 ```bash
 cd backend
@@ -270,9 +315,35 @@ the application refuses to start with `AI_PROVIDER=gemini` unless both are set, 
 guessing a name. The flash model handles extraction, the pro model handles copy generation and
 rewrites.
 
-To enable grounding, set `GROUNDING_ENABLED=true` and `GROUNDING_PROVIDER=gemini` (or `mock` for
-deterministic local sources). If grounding fails, the run continues from the brief alone and is
-labelled "not externally grounded".
+## Grounding
+
+Grounding is optional and off by default. Set `GROUNDING_ENABLED=true` and pick a provider:
+
+| `GROUNDING_PROVIDER` | Needs | Notes |
+| --- | --- | --- |
+| `none` | — | Default. Copy uses the brief only. |
+| `mock` | — | Deterministic fake sources; use it to exercise the UI without spending quota. |
+| `tavily` | `TAVILY_API_KEY` | One search request per generation. Recommended. |
+| `gemini` | Gemini key | Uses Google Search grounding. Metered separately from plain generation and far more tightly — the free tier runs out quickly. |
+
+### Tavily
+
+1. Create a key at [tavily.com](https://tavily.com).
+2. Add to `backend/.env`:
+
+```dotenv
+GROUNDING_ENABLED=true
+GROUNDING_PROVIDER=tavily
+TAVILY_API_KEY=tvly-your-key
+```
+
+The extracted entities are combined into a **single** query per generation, since Tavily bills
+per search. `TAVILY_SEARCH_DEPTH=basic` costs one credit; `advanced` costs more.
+`TAVILY_MAX_RESULTS` (default 5) changes how many sources are returned, not the price.
+
+Grounding failure is always recoverable: the run continues from the brief alone, the generation
+is labelled "not externally grounded", and the workflow stepper shows why (bad key, quota
+exhausted, timeout, service down).
 
 ---
 
@@ -353,9 +424,11 @@ Set `JWT_SECRET_KEY` (and `GEMINI_*` if used) in the shell or an `.env` file nex
    PostgreSQL for concurrent writers. The models and migration are portable.
 4. **Progress is polled, not streamed.** The status endpoint is polled every ~900 ms. Server-sent
    events or WebSockets would remove the latency floor.
-5. **Google sign-in is a placeholder.** The button is present and disabled until an OAuth client
-   is configured; no OAuth flow is implemented.
-6. **Forgot-password has no flow.** The link is rendered for layout parity but is inert.
+5. **Google sign-in has not been tested against live Google.** The verification, provisioning and
+   linking logic is covered by tests with the Google SDK call stubbed, but no real client id was
+   available here, so the browser-side Identity Services handshake is unexercised.
+6. **Password reset does not deliver email by default.** The `console` provider prints the link
+   to the server log; real delivery needs a Resend key or SMTP credentials.
 7. **Passlib was replaced with `bcrypt` directly.** Passlib 1.7.4 (2020, unmaintained) crashes
    during backend detection against bcrypt ≥ 4.1 — `module 'bcrypt' has no attribute '__about__'`.
    The algorithm and cost factor are unchanged; the wrapper is isolated in `app/core/security.py`.
@@ -382,7 +455,8 @@ Set `JWT_SECRET_KEY` (and `GEMINI_*` if used) in the shell or an `.env` file nex
    p95 latency.
 6. Add a secrets manager for `JWT_SECRET_KEY` and `GEMINI_API_KEY`, with rotation.
 7. Add per-tenant quotas and cost tracking per generation once the Gemini provider is live.
-8. Implement the real Google OAuth flow and a password-reset flow with expiring single-use tokens.
+8. Verify Google sign-in against a real client id, and decide whether to restrict it to specific
+   email domains rather than allowing any Google account to self-provision.
 9. Add an approval workflow before generated copy can be exported to a sending platform.
 10. Run an accessibility audit with real assistive technology, and add end-to-end tests
     (Playwright) over the critical login → generate → export path.

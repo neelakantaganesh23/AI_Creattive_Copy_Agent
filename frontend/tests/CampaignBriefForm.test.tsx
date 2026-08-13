@@ -3,9 +3,30 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CampaignBriefForm } from '@/components/generate/CampaignBriefForm';
-import type { AudienceSegment, Product } from '@/types/models';
+import type { AudienceSegment, Brand, Product } from '@/types/models';
 
 import { renderWithProviders } from './utils';
+
+const brands: Brand[] = [
+  {
+    id: 1,
+    name: 'AeroFlex',
+    description: null,
+    guidelines: null,
+    is_active: true,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  },
+  {
+    id: 2,
+    name: 'Northline',
+    description: null,
+    guidelines: null,
+    is_active: true,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  },
+];
 
 const products: Product[] = [
   {
@@ -46,6 +67,7 @@ const segments: AudienceSegment[] = [
 const renderForm = (onSubmit = vi.fn(), isSubmitting = false) => {
   renderWithProviders(
     <CampaignBriefForm
+      brands={brands}
       products={products}
       segments={segments}
       isSubmitting={isSubmitting}
@@ -140,5 +162,30 @@ describe('CampaignBriefForm', () => {
   it('disables the submit button while a generation is running', () => {
     renderForm(vi.fn(), true);
     expect(screen.getByRole('button', { name: /generating/i })).toBeDisabled();
+  });
+
+  it('lists brands as well as products, so a brand with no products is selectable', async () => {
+    const user = userEvent.setup();
+    renderForm();
+
+    await user.click(screen.getByLabelText(/2\. brand \/ product/i));
+    const listbox = within(screen.getByRole('listbox'));
+    expect(listbox.getByText('Products')).toBeInTheDocument();
+    expect(listbox.getByText('Brands')).toBeInTheDocument();
+    expect(listbox.getByText('Northline')).toBeInTheDocument();
+  });
+
+  it('submits a brand-only selection without a product', async () => {
+    const user = userEvent.setup();
+    const onSubmit = renderForm();
+
+    await user.click(screen.getByLabelText(/2\. brand \/ product/i));
+    await user.click(within(screen.getByRole('listbox')).getByText('Northline'));
+    await user.click(screen.getByRole('button', { name: /generate copy/i }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ brand_id: 2, product_id: null }),
+    );
   });
 });

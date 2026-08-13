@@ -11,6 +11,11 @@ class Role(StrEnum):
     VIEWER = "viewer"
 
 
+class AuthProvider(StrEnum):
+    LOCAL = "local"
+    GOOGLE = "google"
+
+
 class Channel(StrEnum):
     EMAIL = "email"
     MOBILE = "mobile"

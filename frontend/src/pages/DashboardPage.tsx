@@ -22,7 +22,7 @@ import type {
 export const DashboardPage = (): JSX.Element => {
   const navigate = useNavigate();
   const { hasRole } = useAuth();
-  const { products, segments, isLoading: taxonomyLoading } = useTaxonomy();
+  const { brands, products, segments, isLoading: taxonomyLoading } = useTaxonomy();
   const runner = useGenerationRunner();
 
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -83,6 +83,7 @@ export const DashboardPage = (): JSX.Element => {
           ) : (
             <CampaignBriefForm
               variant="compact"
+              brands={brands}
               products={products}
               segments={segments}
               isSubmitting={runner.isRunning}

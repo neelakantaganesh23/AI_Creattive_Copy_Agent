@@ -5,12 +5,14 @@ import { AudienceSegmentsPage } from '@/pages/AudienceSegmentsPage';
 import { BrandsPage } from '@/pages/BrandsPage';
 import { CtaRulesPage } from '@/pages/CtaRulesPage';
 import { DashboardPage } from '@/pages/DashboardPage';
+import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage';
 import { GeneratePage } from '@/pages/GeneratePage';
 import { HistoryPage } from '@/pages/HistoryPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { LogsPage } from '@/pages/LogsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { RegisterPage } from '@/pages/RegisterPage';
+import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { TemplatesPage } from '@/pages/TemplatesPage';
 import { ProtectedRoute, PublicOnlyRoute } from '@/routes/ProtectedRoute';
@@ -20,7 +22,12 @@ export const AppRoutes = (): JSX.Element => (
     <Route element={<PublicOnlyRoute />}>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
     </Route>
+
+    {/* Deliberately outside PublicOnlyRoute: a reset link from an inbox must
+        work even when a stale session is still active in this browser. */}
+    <Route path="/reset-password" element={<ResetPasswordPage />} />
 
     <Route element={<ProtectedRoute />}>
       <Route element={<AppLayout />}>

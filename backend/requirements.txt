@@ -9,6 +9,8 @@ alembic>=1.13.0
 PyJWT>=2.9.0
 bcrypt>=4.1.0
 python-multipart>=0.0.9
+# Used by the Tavily grounding provider.
+httpx>=0.27.0
 
 # Optional: only imported when AI_PROVIDER=gemini or GROUNDING_PROVIDER=gemini.
 # Remove this line if you only ever run the mock provider.

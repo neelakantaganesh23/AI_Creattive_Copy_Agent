@@ -29,6 +29,15 @@ os.environ.update(
         "LOG_LEVEL": "WARNING",
         "LOG_JSON": "false",
         "BCRYPT_ROUNDS": "4",
+        # Pinned so the suite never inherits a developer's real .env. Tests that
+        # need these enable them explicitly via monkeypatch.
+        "GOOGLE_CLIENT_ID": "",
+        "GOOGLE_DEFAULT_ROLE": "marketer",
+        "EMAIL_PROVIDER": "console",
+        "TAVILY_API_KEY": "",
+        "GEMINI_API_KEY": "",
+        "GEMINI_FLASH_MODEL": "",
+        "GEMINI_PRO_MODEL": "",
     }
 )
 

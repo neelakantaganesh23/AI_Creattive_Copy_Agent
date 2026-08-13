@@ -7,6 +7,7 @@ import {
   FormControl,
   FormHelperText,
   InputLabel,
+  ListSubheader,
   MenuItem,
   Select,
   Stack,
@@ -24,7 +25,13 @@ import {
   campaignBriefSchema,
   type CampaignBriefFormValues,
 } from '@/schemas/forms';
-import type { AudienceSegment, Channel, GenerationCreatePayload, Product } from '@/types/models';
+import type {
+  AudienceSegment,
+  Brand,
+  Channel,
+  GenerationCreatePayload,
+  Product,
+} from '@/types/models';
 import { CHANNEL_LABELS } from '@/utils/format';
 
 export const SAMPLE_BRIEF = `We are launching the new AeroFlex Running Shoes. The shoes are lightweight, breathable, and built for speed and comfort. The product is designed for everyday runners and athletes who want performance with modern style. AeroFlex Running Shoes are available in four colorways.
@@ -37,6 +44,7 @@ const LANGUAGES = ['English', 'Spanish', 'French', 'German', 'Portuguese', 'Japa
 const CHANNELS: Channel[] = ['email', 'mobile', 'sms'];
 
 interface CampaignBriefFormProps {
+  brands: Brand[];
   products: Product[];
   segments: AudienceSegment[];
   /** A generation is in flight; the submit button shows progress. */
@@ -57,7 +65,7 @@ const defaultsFor = (
     return {
       brief: '',
       channel: 'email',
-      productId: '',
+      brandOrProduct: '',
       audienceSegmentId: '',
       language: 'English',
     };
@@ -68,13 +76,14 @@ const defaultsFor = (
   return {
     brief: SAMPLE_BRIEF,
     channel: 'email',
-    productId: sampleProduct ? String(sampleProduct.id) : '',
+    brandOrProduct: sampleProduct ? `product:${sampleProduct.id}` : '',
     audienceSegmentId: sampleSegment ? String(sampleSegment.id) : '',
     language: 'English',
   };
 };
 
 export const CampaignBriefForm = ({
+  brands,
   products,
   segments,
   isSubmitting,
@@ -106,11 +115,18 @@ export const CampaignBriefForm = ({
   const brief = watch('brief') ?? '';
 
   const submit = (values: CampaignBriefFormValues): void => {
-    const product = products.find((item) => String(item.id) === values.productId);
+    // Selecting a product also pins its brand; selecting a brand leaves the
+    // product unset, which the CTA rules fall back on.
+    const [kind, rawId] = values.brandOrProduct.split(':');
+    const product =
+      kind === 'product' ? products.find((item) => String(item.id) === rawId) : undefined;
+    const brandId =
+      kind === 'brand' ? Number(rawId) : (product?.brand_id ?? null);
+
     onSubmit({
       brief: values.brief.trim(),
       channel: values.channel,
-      brand_id: product?.brand_id ?? null,
+      brand_id: Number.isFinite(brandId) ? brandId : null,
       product_id: product?.id ?? null,
       audience_segment_id: values.audienceSegmentId ? Number(values.audienceSegmentId) : null,
       language: values.language,
@@ -163,7 +179,7 @@ export const CampaignBriefForm = ({
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <Controller
-                name="productId"
+                name="brandOrProduct"
                 control={control}
                 render={({ field }) => (
                   <FormControl fullWidth size="small">
@@ -175,11 +191,18 @@ export const CampaignBriefForm = ({
                       displayEmpty
                     >
                       <MenuItem value="">
-                        <em>No specific product</em>
+                        <em>No specific brand or product</em>
                       </MenuItem>
+                      {products.length > 0 && <ListSubheader>Products</ListSubheader>}
                       {products.map((product) => (
-                        <MenuItem key={product.id} value={String(product.id)}>
+                        <MenuItem key={`product-${product.id}`} value={`product:${product.id}`}>
                           {product.name}
+                        </MenuItem>
+                      ))}
+                      {brands.length > 0 && <ListSubheader>Brands</ListSubheader>}
+                      {brands.map((brand) => (
+                        <MenuItem key={`brand-${brand.id}`} value={`brand:${brand.id}`}>
+                          {brand.name}
                         </MenuItem>
                       ))}
                     </Select>
@@ -274,7 +297,7 @@ export const CampaignBriefForm = ({
                   reset({
                     brief: '',
                     channel: 'email',
-                    productId: '',
+                    brandOrProduct: '',
                     audienceSegmentId: '',
                     language: 'English',
                   })

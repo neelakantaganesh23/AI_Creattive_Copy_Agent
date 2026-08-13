@@ -8,6 +8,7 @@ export interface AuthContextValue {
   /** True until the initial silent refresh has settled. */
   isInitialising: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<User>;
+  loginWithGoogle: (credential: string) => Promise<User>;
   register: (name: string, email: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
   hasRole: (...roles: Role[]) => boolean;

@@ -20,10 +20,11 @@ vi.mock('@/api/generations', () => ({
 
 const listProducts = vi.fn();
 const listAudienceSegments = vi.fn();
+const listBrands = vi.fn();
 vi.mock('@/api/taxonomy', () => ({
   listProducts: () => listProducts(),
   listAudienceSegments: () => listAudienceSegments(),
-  listBrands: vi.fn(),
+  listBrands: () => listBrands(),
   listCtaRules: vi.fn(),
   listTemplates: vi.fn(),
 }));
@@ -63,6 +64,16 @@ const clickGenerate = async (user: ReturnType<typeof userEvent.setup>): Promise<
 };
 const { GeneratePage } = await import('@/pages/GeneratePage');
 
+const brand = {
+  id: 1,
+  name: 'AeroFlex',
+  description: null,
+  guidelines: null,
+  is_active: true,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+};
+
 const product = {
   id: 1,
   brand_id: 1,
@@ -89,6 +100,7 @@ const segment = {
 describe('GeneratePage', () => {
   beforeEach(() => {
     refreshSession.mockResolvedValue(SESSION);
+    listBrands.mockResolvedValue({ items: [brand], total: 1, page: 1, page_size: 100, pages: 1 });
     listProducts.mockResolvedValue({ items: [product], total: 1, page: 1, page_size: 100, pages: 1 });
     listAudienceSegments.mockResolvedValue({
       items: [segment],

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from app.agents.base import (
@@ -15,7 +17,13 @@ from app.agents.base import (
 from app.agents.cta import render_template, resolve_cta
 from app.agents.orchestrator import GenerationWorkflow
 from app.agents.repetition import analyse_repetition
-from app.core.errors import AIInvalidOutputError, AIProviderError, GenerationFailedError
+from app.core.errors import (
+    AIInvalidOutputError,
+    AINotConfiguredError,
+    AIProviderError,
+    GenerationFailedError,
+    GroundingError,
+)
 from app.models.enums import Channel
 from app.schemas.copy_output import CopyBundle, EmailCopy, MobileCopy, SMSCopy
 from app.services.ai.grounding import MockGroundingProvider, NullGroundingProvider
@@ -236,3 +244,97 @@ async def test_workflow_completes_with_the_mock_provider() -> None:
     assert output.email.cta == "SHOP AEROFLEX RUNNING SHOES"
     assert output.grounded is False
     assert duration_ms >= 0
+
+
+# -- Tavily grounding -------------------------------------------------------
+def _tavily_provider(monkeypatch, handler):
+    """Build a Tavily provider whose HTTP calls hit a mock transport."""
+    import httpx
+
+    from app.core.config import settings as app_settings
+    from app.services.ai import grounding as grounding_module
+
+    monkeypatch.setattr(app_settings, "tavily_api_key", "tvly-test-key")
+
+    real_client = httpx.AsyncClient
+
+    def fake_client(*_args, **kwargs):
+        return real_client(transport=httpx.MockTransport(handler), **kwargs)
+
+    monkeypatch.setattr(grounding_module.httpx, "AsyncClient", fake_client)
+    return grounding_module.TavilyGroundingProvider()
+
+
+async def test_tavily_grounding_returns_sources(monkeypatch) -> None:
+    import httpx
+
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["auth"] = request.headers.get("authorization")
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "title": "AeroFlex review",
+                        "url": "https://example.com/aeroflex",
+                        "content": "A running shoe overview.",
+                    },
+                    {"title": "No url entry"},
+                ]
+            },
+        )
+
+    provider = _tavily_provider(monkeypatch, handler)
+    result = await provider.search(
+        ExtractedBrief(brand="AeroFlex", products=["AeroFlex Running Shoes"]), brief=SAMPLE_BRIEF
+    )
+
+    assert result.grounded is True
+    assert len(result.sources) == 1
+    assert result.sources[0].url == "https://example.com/aeroflex"
+    assert result.sources[0].source_type == "tavily"
+    assert captured["auth"] == "Bearer tvly-test-key"
+    # Entities are combined into a single billed search.
+    assert "AeroFlex Running Shoes" in captured["body"]["query"]
+
+
+async def test_tavily_grounding_reports_quota_exhaustion(monkeypatch) -> None:
+    import httpx
+
+    provider = _tavily_provider(
+        monkeypatch, lambda _request: httpx.Response(429, json={"detail": "quota"})
+    )
+    with pytest.raises(GroundingError, match="quota has been exhausted"):
+        await provider.search(ExtractedBrief(products=["AeroFlex"]), brief=SAMPLE_BRIEF)
+
+
+async def test_tavily_grounding_reports_bad_key(monkeypatch) -> None:
+    import httpx
+
+    provider = _tavily_provider(monkeypatch, lambda _request: httpx.Response(401, json={}))
+    with pytest.raises(GroundingError, match="key was rejected"):
+        await provider.search(ExtractedBrief(products=["AeroFlex"]), brief=SAMPLE_BRIEF)
+
+
+async def test_tavily_grounding_skips_when_nothing_to_search(monkeypatch) -> None:
+    import httpx
+
+    def handler(_request: httpx.Request) -> httpx.Response:  # pragma: no cover - not called
+        raise AssertionError("no request should be made without entities")
+
+    provider = _tavily_provider(monkeypatch, handler)
+    result = await provider.search(ExtractedBrief(), brief=SAMPLE_BRIEF)
+    assert result.grounded is False
+    assert result.sources == []
+
+
+def test_tavily_requires_an_api_key(monkeypatch) -> None:
+    from app.core.config import settings as app_settings
+    from app.services.ai.grounding import TavilyGroundingProvider
+
+    monkeypatch.setattr(app_settings, "tavily_api_key", None)
+    with pytest.raises(AINotConfiguredError, match="TAVILY_API_KEY"):
+        TavilyGroundingProvider()

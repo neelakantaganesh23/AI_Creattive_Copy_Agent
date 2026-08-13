@@ -6,14 +6,27 @@ import { ApiError } from '@/api/client';
 
 const login = vi.fn();
 const refreshSession = vi.fn();
+const fetchAuthOptions = vi.fn();
+const loginWithGoogle = vi.fn();
 
 vi.mock('@/api/auth', () => ({
   login: (...args: unknown[]) => login(...args),
+  loginWithGoogle: (...args: unknown[]) => loginWithGoogle(...args),
   register: vi.fn(),
   refreshSession: () => refreshSession(),
   logout: vi.fn().mockResolvedValue(undefined),
   fetchCurrentUser: vi.fn(),
+  fetchAuthOptions: () => fetchAuthOptions(),
+  requestPasswordReset: vi.fn(),
+  confirmPasswordReset: vi.fn(),
 }));
+
+const AUTH_OPTIONS = {
+  google_login_enabled: false,
+  google_client_id: null,
+  registration_enabled: true,
+  password_reset_enabled: true,
+};
 
 const navigate = vi.fn();
 vi.mock('react-router-dom', async () => {
@@ -30,6 +43,7 @@ describe('LoginPage', () => {
     navigate.mockReset();
     // No existing session: the silent refresh on mount fails.
     refreshSession.mockRejectedValue(new ApiError('no session', 'TOKEN_INVALID', 401, null, null));
+    fetchAuthOptions.mockResolvedValue(AUTH_OPTIONS);
   });
 
   it('renders the product showcase and the sign-in form', async () => {
@@ -113,8 +127,29 @@ describe('LoginPage', () => {
     expect(password).toHaveAttribute('type', 'text');
   });
 
-  it('disables Google sign-in when it is not configured', async () => {
+  it('hides Google sign-in when the server has no client id', async () => {
     renderWithProviders(<LoginPage />, { route: '/login' });
-    expect(await screen.findByRole('button', { name: /google/i })).toBeDisabled();
+
+    expect(await screen.findByRole('heading', { name: 'Welcome Back' })).toBeInTheDocument();
+    await waitFor(() => expect(fetchAuthOptions).toHaveBeenCalled());
+    expect(screen.queryByText('or')).not.toBeInTheDocument();
+  });
+
+  it('offers Google sign-in once the server reports a client id', async () => {
+    fetchAuthOptions.mockResolvedValue({
+      ...AUTH_OPTIONS,
+      google_login_enabled: true,
+      google_client_id: 'client-id.apps.googleusercontent.com',
+    });
+    renderWithProviders(<LoginPage />, { route: '/login' });
+
+    // The Google script cannot load in jsdom, so the fallback state is expected.
+    expect(await screen.findByText('or')).toBeInTheDocument();
+  });
+
+  it('links to the forgot-password page', async () => {
+    renderWithProviders(<LoginPage />, { route: '/login' });
+    const link = await screen.findByRole('link', { name: /forgot password/i });
+    expect(link).toHaveAttribute('href', '/forgot-password');
   });
 });

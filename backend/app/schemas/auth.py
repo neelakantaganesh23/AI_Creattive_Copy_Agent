@@ -34,6 +34,39 @@ class LoginRequest(BaseModel):
     remember_me: bool = False
 
 
+class GoogleLoginRequest(BaseModel):
+    """The ID token issued by Google Identity Services in the browser."""
+
+    credential: str = Field(min_length=20, max_length=8192)
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(min_length=20, max_length=512)
+    password: str = PASSWORD_FIELD
+
+    @field_validator("password")
+    @classmethod
+    def _password_strength(cls, value: str) -> str:
+        if not any(char.isalpha() for char in value) or not any(
+            char.isdigit() for char in value
+        ):
+            raise ValueError("Password must contain at least one letter and one number.")
+        return value
+
+
+class AuthOptionsResponse(BaseModel):
+    """Non-secret capability flags the login screen reads before rendering."""
+
+    google_login_enabled: bool
+    google_client_id: str | None
+    registration_enabled: bool
+    password_reset_enabled: bool
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -43,6 +76,7 @@ class UserResponse(BaseModel):
     role: Role
     is_active: bool
     created_at: datetime
+    auth_provider: str = "local"
 
 
 class TokenResponse(BaseModel):

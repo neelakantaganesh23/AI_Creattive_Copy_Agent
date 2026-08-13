@@ -14,27 +14,61 @@ import {
   Typography,
 } from '@mui/material';
 import { Eye, EyeOff, Lock, LogIn, Mail } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
+import { fetchAuthOptions } from '@/api/auth';
 import { ApiError } from '@/api/client';
 import { AuthShowcase } from '@/components/auth/AuthShowcase';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { Logo } from '@/components/common/Logo';
-import { env } from '@/config/env';
 import { useAuth } from '@/hooks/useAuth';
 import { loginSchema, type LoginFormValues } from '@/schemas/forms';
+import type { AuthOptions } from '@/types/models';
 
 interface LocationState {
   from?: string;
 }
 
 export const LoginPage = (): JSX.Element => {
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [options, setOptions] = useState<AuthOptions | null>(null);
+  const [googleBusy, setGoogleBusy] = useState(false);
+
+  // The server decides which sign-in methods exist, so the button only appears
+  // when a client id is actually configured.
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAuthOptions()
+      .then((data) => {
+        if (!cancelled) setOptions(data);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleGoogleCredential = async (credential: string): Promise<void> => {
+    setAuthError(null);
+    setGoogleBusy(true);
+    try {
+      await loginWithGoogle(credential);
+      const target = (location.state as LocationState | null)?.from ?? '/dashboard';
+      navigate(target, { replace: true });
+    } catch (error) {
+      setAuthError(
+        error instanceof ApiError ? error.message : 'Google sign-in failed. Please try again.',
+      );
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
 
   const {
     register,
@@ -155,7 +189,12 @@ export const LoginPage = (): JSX.Element => {
                   control={<Checkbox {...register('rememberMe')} defaultChecked size="small" />}
                   label={<Typography variant="body2">Remember me</Typography>}
                 />
-                <MuiLink component={Link} to="/login" variant="body2" underline="hover">
+                <MuiLink
+                  component={Link}
+                  to="/forgot-password"
+                  variant="body2"
+                  underline="hover"
+                >
                   Forgot password?
                 </MuiLink>
               </Stack>
@@ -171,22 +210,21 @@ export const LoginPage = (): JSX.Element => {
                 {isSubmitting ? 'Signing in...' : 'Sign In'}
               </Button>
 
-              <Divider>
-                <Typography variant="caption" color="text.secondary">
-                  or
-                </Typography>
-              </Divider>
-
-              <Button
-                variant="outlined"
-                fullWidth
-                disabled={!env.enableGoogleLogin}
-                sx={{ borderColor: 'divider', color: 'text.primary' }}
-              >
-                {env.enableGoogleLogin
-                  ? 'Sign in with Google'
-                  : 'Sign in with Google (not configured)'}
-              </Button>
+              {options?.google_login_enabled && options.google_client_id && (
+                <>
+                  <Divider>
+                    <Typography variant="caption" color="text.secondary">
+                      or
+                    </Typography>
+                  </Divider>
+                  <GoogleSignInButton
+                    clientId={options.google_client_id}
+                    disabled={googleBusy || isSubmitting}
+                    onCredential={(credential) => void handleGoogleCredential(credential)}
+                    onError={setAuthError}
+                  />
+                </>
+              )}
 
               <Typography variant="body2" color="text.secondary" textAlign="center">
                 New to AI Creative Copy Agent?{' '}

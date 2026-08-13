@@ -39,6 +39,39 @@ repetition fix, CTA optimisation, and output parsing.
 """
 
 
+def _assert_schema_current(engine) -> None:
+    """Fail fast when an existing database predates a model change.
+
+    ``create_all`` adds missing tables but never alters existing ones, so a new
+    column on an old database surfaces as an opaque "no such column" error deep
+    in the first query. Detect it here and say exactly how to fix it.
+    """
+    from sqlalchemy import inspect
+
+    from app.database.base import Base
+
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    drift: list[str] = []
+
+    for table in Base.metadata.sorted_tables:
+        if table.name not in existing_tables:
+            continue
+        actual = {column["name"] for column in inspector.get_columns(table.name)}
+        missing = [column.name for column in table.columns if column.name not in actual]
+        drift.extend(f"{table.name}.{name}" for name in missing)
+
+    if drift:
+        raise RuntimeError(
+            "The database schema is out of date; these columns are missing: "
+            + ", ".join(sorted(drift))
+            + ". Run 'alembic upgrade head' to migrate. If the database was created by "
+            "AUTO_CREATE_TABLES rather than Alembic, first run "
+            "'alembic stamp 0001_initial'. Deleting the database file also works, but "
+            "discards all existing data."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
@@ -59,6 +92,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         Base.metadata.create_all(bind=engine)
         logger.info("database tables ensured")
+        _assert_schema_current(engine)
 
     if settings.seed_on_startup:
         from app.database.seed import seed_all

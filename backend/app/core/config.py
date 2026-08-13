@@ -13,7 +13,7 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 AIProviderName = Literal["mock", "gemini"]
-GroundingProviderName = Literal["none", "mock", "gemini"]
+GroundingProviderName = Literal["none", "mock", "gemini", "tavily"]
 
 
 class Settings(BaseSettings):
@@ -52,6 +52,28 @@ class Settings(BaseSettings):
     refresh_cookie_name: str = "ccagent_refresh"
     allow_registration: bool = True
 
+    # -- Google sign-in ------------------------------------------------------
+    # Empty disables the feature; the frontend hides the button to match.
+    google_client_id: str | None = None
+    # Role granted to accounts auto-created on first Google sign-in.
+    google_default_role: Literal["admin", "marketer", "viewer"] = "marketer"
+
+    # -- Password reset ------------------------------------------------------
+    password_reset_expire_minutes: int = 30
+    rate_limit_password_reset: str = "5/hour"
+    # Used to build the link in the reset email.
+    frontend_base_url: str = "http://localhost:5173"
+    email_provider: Literal["console", "smtp", "resend"] = "console"
+    email_from: str = "AI Creative Copy Agent <no-reply@example.com>"
+    resend_api_key: str | None = None
+    resend_api_url: str = "https://api.resend.com/emails"
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_use_tls: bool = True
+    email_timeout_seconds: float = 15.0
+
     # -- CORS / limits -------------------------------------------------------
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     request_max_bytes: int = 1_048_576
@@ -67,6 +89,12 @@ class Settings(BaseSettings):
     gemini_timeout_seconds: float = 60.0
     grounding_enabled: bool = False
     grounding_provider: GroundingProviderName = "none"
+    tavily_api_key: str | None = None
+    tavily_api_url: str = "https://api.tavily.com/search"
+    tavily_max_results: int = 5
+    # "basic" costs one credit per search; "advanced" costs more.
+    tavily_search_depth: Literal["basic", "advanced"] = "basic"
+    tavily_timeout_seconds: float = 20.0
     # Simulated per-stage latency for the mock provider, so the workflow UI can
     # be exercised end to end without a real model.
     mock_stage_delay_ms: int = 220
@@ -102,6 +130,25 @@ class Settings(BaseSettings):
     def _upper_log_level(cls, value: str) -> str:
         return value.upper()
 
+    @field_validator(
+        "gemini_api_key",
+        "gemini_flash_model",
+        "gemini_pro_model",
+        "google_client_id",
+        "tavily_api_key",
+        "resend_api_key",
+        "smtp_host",
+        "smtp_username",
+        "smtp_password",
+        mode="before",
+    )
+    @classmethod
+    def _blank_is_unset(cls, value: str | None) -> str | None:
+        """``KEY=`` in a .env file means "not configured", not an empty value."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value.strip() if isinstance(value, str) else value
+
     @model_validator(mode="after")
     def _validate_production_safety(self) -> Settings:
         if self.app_env == "production":
@@ -124,6 +171,10 @@ class Settings(BaseSettings):
     @property
     def is_development(self) -> bool:
         return self.app_env in ("development", "test")
+
+    @property
+    def google_login_enabled(self) -> bool:
+        return bool(self.google_client_id)
 
     @property
     def channel_limits(self) -> dict[str, dict[str, int]]:

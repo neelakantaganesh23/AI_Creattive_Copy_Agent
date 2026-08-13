@@ -11,6 +11,8 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Protocol
 
+import httpx
+
 from app.core.config import settings
 from app.core.errors import AINotConfiguredError, GroundingError
 from app.core.logging import get_logger
@@ -67,6 +69,98 @@ class MockGroundingProvider:
         return GroundingResult(grounded=True, sources=sources, notes=[])
 
 
+class TavilyGroundingProvider:
+    """Grounds via the Tavily search API.
+
+    One HTTP request per generation: the extracted entities are combined into a
+    single query, because Tavily bills per search.
+    """
+
+    name = "tavily"
+
+    def __init__(self) -> None:
+        if not settings.tavily_api_key:
+            raise AINotConfiguredError(
+                "TAVILY_API_KEY is required when GROUNDING_PROVIDER=tavily."
+            )
+        self._api_key = settings.tavily_api_key
+
+    async def search(self, extracted: ExtractedBrief, *, brief: str) -> GroundingResult:
+        queries = _build_queries(extracted)
+        if not queries:
+            return GroundingResult(
+                grounded=False, notes=["No groundable entities were found in the brief."]
+            )
+
+        query = " ".join(queries[:3])
+        payload = {
+            "query": query,
+            "max_results": settings.tavily_max_results,
+            "search_depth": settings.tavily_search_depth,
+            "include_answer": False,
+            "include_raw_content": False,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=settings.tavily_timeout_seconds) as client:
+                response = await client.post(
+                    settings.tavily_api_url,
+                    json=payload,
+                    headers={"Authorization": f"Bearer {self._api_key}"},
+                )
+                response.raise_for_status()
+                data = response.json()
+        except httpx.HTTPStatusError as exc:
+            reason = _classify_tavily_status(exc.response.status_code)
+            logger.warning(
+                "tavily grounding failed",
+                extra={"status_code": exc.response.status_code, "reason": reason},
+            )
+            raise GroundingError(reason) from exc
+        except httpx.TimeoutException as exc:
+            raise GroundingError("The grounded search request timed out.") from exc
+        except httpx.HTTPError as exc:
+            logger.warning("tavily grounding request failed")
+            raise GroundingError(
+                "Grounded search could not be reached; the copy is based on the brief only."
+            ) from exc
+
+        sources = [
+            GroundingSourceData(
+                title=str(item.get("title") or item.get("url") or "Untitled source")[:300],
+                url=str(item["url"])[:1000],
+                source_type="tavily",
+                # Tavily returns an extracted snippet per result in "content".
+                snippet=(str(item["content"])[:800] if item.get("content") else None),
+            )
+            for item in (data.get("results") or [])
+            if item.get("url")
+        ]
+
+        logger.info(
+            "tavily grounding completed",
+            extra={"query_terms": len(queries[:3]), "source_count": len(sources)},
+        )
+        return GroundingResult(
+            grounded=bool(sources),
+            sources=sources[:8],
+            notes=[] if sources else ["The search returned no citable sources."],
+        )
+
+
+def _classify_tavily_status(status_code: int) -> str:
+    if status_code in (401, 403):
+        return "The Tavily API key was rejected."
+    if status_code == 429:
+        return (
+            "The Tavily search quota has been exhausted. Copy was generated from the brief "
+            "alone. Try again later or set GROUNDING_ENABLED=false."
+        )
+    if status_code >= 500:
+        return "The Tavily search service is unavailable; the copy is based on the brief only."
+    return "Grounded search failed; the copy is based on the brief only."
+
+
 class GeminiGroundingProvider:
     """Grounds via Gemini's Google Search tool."""
 
@@ -111,8 +205,13 @@ class GeminiGroundingProvider:
                 timeout=settings.gemini_timeout_seconds,
             )
         except Exception as exc:
-            logger.warning("gemini grounding failed", extra={"model": self._model})
-            raise GroundingError() from exc
+            reason = _classify(exc)
+            # The reason reaches the workflow stepper, so it has to be actionable.
+            logger.warning(
+                "gemini grounding failed",
+                extra={"model": self._model, "reason": reason},
+            )
+            raise GroundingError(reason) from exc
 
         sources = _extract_sources(response)
         return GroundingResult(
@@ -120,6 +219,27 @@ class GeminiGroundingProvider:
             sources=sources,
             notes=[] if sources else ["The search returned no citable sources."],
         )
+
+
+def _classify(exc: Exception) -> str:
+    """Turn a provider exception into a message the user can act on.
+
+    Grounded search is metered separately from plain generation, so quota
+    exhaustion here is common and needs to be distinguishable from a real fault.
+    """
+    message = str(exc).lower()
+    if "quota" in message or "resource_exhausted" in message or "429" in message:
+        return (
+            "The search grounding quota has been exhausted. Copy was generated from the "
+            "brief alone. Try again later or set GROUNDING_ENABLED=false."
+        )
+    if "api key" in message or "unauthenticated" in message or "permission" in message:
+        return "The Gemini API key was rejected for grounded search."
+    if "not found" in message or "404" in message:
+        return f"The model {settings.gemini_flash_model!r} does not support grounded search."
+    if "timeout" in message or isinstance(exc, TimeoutError):
+        return "The grounded search request timed out."
+    return "Grounded search failed; the copy is based on the brief only."
 
 
 def _extract_sources(response: object) -> list[GroundingSourceData]:
@@ -170,6 +290,8 @@ def build_grounding_provider() -> GroundingProvider:
         return NullGroundingProvider()
     if settings.grounding_provider == "mock":
         return MockGroundingProvider()
+    if settings.grounding_provider == "tavily":
+        return TavilyGroundingProvider()
     return GeminiGroundingProvider()
 
 

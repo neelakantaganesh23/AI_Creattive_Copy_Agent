@@ -1,5 +1,5 @@
 import { apiClient, setAccessToken } from '@/api/client';
-import type { Role, TokenResponse, User } from '@/types/models';
+import type { AuthOptions, Role, TokenResponse, User } from '@/types/models';
 
 export interface LoginPayload {
   email: string;
@@ -43,5 +43,35 @@ export const logout = async (): Promise<void> => {
 
 export const fetchCurrentUser = async (): Promise<User> => {
   const { data } = await apiClient.get<User>('/auth/me');
+  return data;
+};
+
+/** Exchanges a Google Identity Services ID token for an application session. */
+export const loginWithGoogle = async (credential: string): Promise<TokenResponse> => {
+  const { data } = await apiClient.post<TokenResponse>('/auth/google', { credential });
+  setAccessToken(data.access_token);
+  return data;
+};
+
+export const fetchAuthOptions = async (): Promise<AuthOptions> => {
+  const { data } = await apiClient.get<AuthOptions>('/auth/options');
+  return data;
+};
+
+export const requestPasswordReset = async (email: string): Promise<{ message: string }> => {
+  const { data } = await apiClient.post<{ message: string }>('/auth/password-reset/request', {
+    email,
+  });
+  return data;
+};
+
+export const confirmPasswordReset = async (
+  token: string,
+  password: string,
+): Promise<{ message: string }> => {
+  const { data } = await apiClient.post<{ message: string }>('/auth/password-reset/confirm', {
+    token,
+    password,
+  });
   return data;
 };

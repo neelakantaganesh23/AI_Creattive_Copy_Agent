@@ -6,6 +6,8 @@ export type GenerationStatus = 'pending' | 'running' | 'completed' | 'partial' |
 export type AgentStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped';
 export type QualityStatus = 'passed' | 'warning' | 'failed';
 
+export type AuthProvider = 'local' | 'google';
+
 export interface User {
   id: number;
   name: string;
@@ -13,6 +15,15 @@ export interface User {
   role: Role;
   is_active: boolean;
   created_at: string;
+  auth_provider?: AuthProvider;
+}
+
+/** Which sign-in methods the server offers; read before rendering the login form. */
+export interface AuthOptions {
+  google_login_enabled: boolean;
+  google_client_id: string | null;
+  registration_enabled: boolean;
+  password_reset_enabled: boolean;
 }
 
 export interface TokenResponse {

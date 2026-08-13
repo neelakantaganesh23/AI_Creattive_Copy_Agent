@@ -19,6 +19,9 @@ htmlcov/
 *.db
 *.sqlite
 *.sqlite3
+# Pre-migration snapshots hold real user rows and password hashes.
+*.db.backup
+*.db.bak
 backend/data/
 
 # Node

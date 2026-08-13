@@ -71,4 +71,6 @@ npm run build
 
 - No server-side rendering.
 - No multi-tenancy; a single organisation is assumed.
-- No email sending or campaign delivery — the product ends at generated, exportable copy.
+- No marketing email sending or campaign delivery — the product ends at generated, exportable
+  copy. Transactional account email (password reset) is the sole exception and lives behind
+  the `EmailSender` interface in `app/services/email/`.

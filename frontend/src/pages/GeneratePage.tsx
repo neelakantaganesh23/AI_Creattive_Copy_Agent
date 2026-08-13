@@ -15,7 +15,7 @@ import type { GenerationCreatePayload, GenerationDetail } from '@/types/models';
 
 export const GeneratePage = (): JSX.Element => {
   const { hasRole } = useAuth();
-  const { products, segments, isLoading, error: taxonomyError, reload } = useTaxonomy();
+  const { brands, products, segments, isLoading, error: taxonomyError, reload } = useTaxonomy();
   const runner = useGenerationRunner();
   const [searchParams, setSearchParams] = useSearchParams();
   const [detail, setDetail] = useState<GenerationDetail | null>(null);
@@ -95,6 +95,7 @@ export const GeneratePage = (): JSX.Element => {
             <Skeleton variant="rounded" height={430} />
           ) : (
             <CampaignBriefForm
+              brands={brands}
               products={products}
               segments={segments}
               isSubmitting={runner.isRunning}
