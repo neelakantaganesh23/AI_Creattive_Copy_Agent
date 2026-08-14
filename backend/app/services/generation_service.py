@@ -63,7 +63,8 @@ from app.schemas.generation import (
     GenerationSummary,
     GroundingSourceResponse,
 )
-from app.services.ai.factory import get_grounding_provider
+from app.services.ai.factory import get_grounding_provider, get_image_provider
+from app.services.media import get_media_storage
 from app.utils.text import slugify_title
 
 logger = get_logger("app.generation")
@@ -206,7 +207,9 @@ class GenerationService:
             generation.status = GenerationStatus.RUNNING
             session.commit()
 
-            workflow = GenerationWorkflow(get_grounding_provider())
+            workflow = GenerationWorkflow(
+                get_grounding_provider(), get_media_storage(), get_image_provider()
+            )
             try:
                 output, duration_ms = await asyncio.wait_for(
                     workflow.run(context, recorder),

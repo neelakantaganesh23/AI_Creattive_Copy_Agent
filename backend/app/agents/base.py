@@ -73,6 +73,10 @@ class WorkflowContext:
     quality: QualityCheck = field(default_factory=QualityCheck)
     judge: JudgeVerdict | None = None
     applied_cta_rule_id: int | None = None
+    # Populated by the image generation stage. Null when disabled or unavailable
+    # for this run -- the stage failing never fails the whole generation.
+    image_url: str | None = None
+    image_prompt: str | None = None
     warnings: list[str] = field(default_factory=list)
 
 

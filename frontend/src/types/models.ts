@@ -96,6 +96,10 @@ export interface GenerationOutput {
   grounded: boolean;
   provider: string;
   models: Record<string, string | null>;
+  /** URL path served under the backend's media prefix, e.g. "/media/foo.png".
+   *  Null when image generation is disabled or was unavailable for this run. */
+  image_url: string | null;
+  image_prompt: string | null;
 }
 
 export interface AgentExecution {

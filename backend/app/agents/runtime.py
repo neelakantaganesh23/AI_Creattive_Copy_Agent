@@ -20,19 +20,21 @@ from functools import lru_cache
 from typing import Any, Literal, TypeVar
 
 from pydantic_ai import Agent
+from pydantic_ai.capabilities import NativeTool
 from pydantic_ai.exceptions import (
     ModelAPIError,
     ModelHTTPError,
     UnexpectedModelBehavior,
     UsageLimitExceeded,
 )
-from pydantic_ai.messages import ModelMessage, ModelResponse, ToolCallPart
+from pydantic_ai.messages import BinaryImage, ModelMessage, ModelResponse, ToolCallPart
 from pydantic_ai.models import Model
 from pydantic_ai.models.function import AgentInfo, FunctionModel
+from pydantic_ai.native_tools import ImageGenerationTool
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import UsageLimits
 
-from app.agents.types import ModelInfo
+from app.agents.types import GeneratedImage, ModelInfo
 from app.core.config import settings
 from app.core.errors import (
     AIInvalidOutputError,
@@ -133,6 +135,8 @@ def _build_model(tier: ModelTier) -> Model:
 def reset_model_cache() -> None:
     """Clear cached models. Used by tests that swap configuration."""
     _build_model.cache_clear()
+    _build_image_model.cache_clear()
+    _image_agent.cache_clear()
 
 
 def build_agent(
@@ -191,31 +195,37 @@ async def run_agent(
     if is_mock():
         await _simulate_latency()
 
+    with _mock_scope(request, mock_builder), _map_errors(agent.name or "agent"):
+        result = await asyncio.wait_for(
+            agent.run(prompt, model=model, deps=deps, usage_limits=limits),
+            timeout=settings.gemini_timeout_seconds,
+        )
+
+    return result.output
+
+
+@contextmanager
+def _map_errors(agent_name: str) -> Iterator[None]:
+    """Map every Pydantic AI failure onto the application's error types."""
     try:
-        with _mock_scope(request, mock_builder):
-            result = await asyncio.wait_for(
-                agent.run(prompt, model=model, deps=deps, usage_limits=limits),
-                timeout=settings.gemini_timeout_seconds,
-            )
+        yield
     except TimeoutError as exc:
         raise AIProviderTimeoutError() from exc
     except ModelHTTPError as exc:
         raise _map_http_error(exc) from exc
     except UsageLimitExceeded as exc:
-        logger.error("agent exceeded its usage limit", extra={"agent": agent.name})
+        logger.error("agent exceeded its usage limit", extra={"agent": agent_name})
         raise AIProviderError() from exc
     except UnexpectedModelBehavior as exc:
         # Includes "exceeded max retries" when output validation keeps failing.
         logger.error(
             "agent produced unusable output",
-            extra={"agent": agent.name, "reason": str(exc)[:200]},
+            extra={"agent": agent_name, "reason": str(exc)[:200]},
         )
         raise AIInvalidOutputError() from exc
     except ModelAPIError as exc:
-        logger.error("model call failed", extra={"agent": agent.name})
+        logger.error("model call failed", extra={"agent": agent_name})
         raise AIProviderError() from exc
-
-    return result.output
 
 
 def _map_http_error(exc: ModelHTTPError) -> AIProviderError:
@@ -226,6 +236,50 @@ def _map_http_error(exc: ModelHTTPError) -> AIProviderError:
         return AINotConfiguredError("The Gemini API key was rejected.")
     logger.error("model returned an HTTP error", extra={"status_code": status})
     return AIProviderError()
+
+
+@lru_cache
+def _build_image_model() -> Model:
+    if not settings.gemini_api_key:
+        raise AINotConfiguredError("GEMINI_API_KEY is not configured.")
+    if not settings.gemini_image_model:
+        raise AINotConfiguredError(
+            "GEMINI_IMAGE_MODEL must be configured to generate images."
+        )
+
+    from pydantic_ai.models.google import GoogleModel
+    from pydantic_ai.providers.google import GoogleProvider
+
+    return GoogleModel(
+        settings.gemini_image_model, provider=GoogleProvider(api_key=settings.gemini_api_key)
+    )
+
+
+@lru_cache
+def _image_agent() -> Agent[None, BinaryImage]:
+    return Agent(
+        output_type=BinaryImage,
+        instructions="Generate an image based on the prompt. Do not ask clarifying questions.",
+        name="image_generation",
+        capabilities=[NativeTool(ImageGenerationTool(aspect_ratio=settings.image_aspect_ratio))],
+    )
+
+
+async def generate_image_via_gemini(prompt: str) -> GeneratedImage:
+    """Generate one image from a text prompt using Gemini's native image output.
+
+    Requires an image-capable model (``GEMINI_IMAGE_MODEL``), distinct from the
+    text tiers. Called by ``GeminiImageProvider`` -- dispatch between mock,
+    Gemini and Stability lives in ``app.services.ai.image_generation``, not here.
+    """
+    with _map_errors("image_generation"):
+        result = await asyncio.wait_for(
+            _image_agent().run(prompt, model=_build_image_model()),
+            timeout=settings.gemini_timeout_seconds,
+        )
+
+    image = result.output
+    return GeneratedImage(data=image.data, media_type=image.media_type)
 
 
 async def _simulate_latency() -> None:

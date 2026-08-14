@@ -112,6 +112,27 @@ class Settings(BaseSettings):
     # Upper bound on model requests within a single agent run.
     agent_request_limit: int = Field(default=6, ge=1)
 
+    # -- Image generation ------------------------------------------------------
+    image_generation_enabled: bool = True
+    # mock | gemini | stability. Independent of AI_PROVIDER: text and image
+    # generation can use different backends, e.g. Gemini for copy with Stability
+    # for images if Gemini's image quota is unavailable.
+    image_provider: Literal["mock", "gemini", "stability"] = "mock"
+    # Required when IMAGE_PROVIDER=gemini. Must be a model with native image
+    # output, e.g. "gemini-3-pro-image" -- never hard-coded.
+    gemini_image_model: str | None = None
+    # Required when IMAGE_PROVIDER=stability.
+    stability_api_key: str | None = None
+    stability_api_url: str = "https://api.stability.ai/v2beta/stable-image/generate/core"
+    stability_output_format: Literal["png", "jpeg", "webp"] = "png"
+    stability_timeout_seconds: float = 60.0
+    # Ratios both the Gemini and Stability APIs accept, so switching provider
+    # never needs a config change here too.
+    image_aspect_ratio: Literal["1:1", "2:3", "3:2", "4:5", "5:4", "9:16", "16:9", "21:9"] = "1:1"
+    # Local disk directory generated images are written to, served at MEDIA_URL_PREFIX.
+    media_dir: str = "./media"
+    media_url_prefix: str = "/media"
+
     # -- LLM-as-Judge --------------------------------------------------------
     judge_enabled: bool = True
     # Verdicts should be stable run to run, so the judge runs much colder than
@@ -155,6 +176,8 @@ class Settings(BaseSettings):
         "gemini_api_key",
         "gemini_flash_model",
         "gemini_pro_model",
+        "gemini_image_model",
+        "stability_api_key",
         "google_client_id",
         "tavily_api_key",
         "resend_api_key",

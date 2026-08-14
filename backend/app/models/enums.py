@@ -90,6 +90,7 @@ class AgentName(StrEnum):
     COPY_GENERATION = "copy_generation"
     REPETITION_FIX = "repetition_fix"
     CTA_OPTIMIZATION = "cta_optimization"
+    IMAGE_GENERATION = "image_generation"
     CONTENT_VALIDATION = "content_validation"
     OUTPUT_PARSING = "output_parsing"
 
@@ -100,6 +101,9 @@ AGENT_SEQUENCE: tuple[AgentName, ...] = (
     AgentName.COPY_GENERATION,
     AgentName.REPETITION_FIX,
     AgentName.CTA_OPTIMIZATION,
+    # Runs after CTA optimisation so the final headline and brand are available
+    # for the image prompt.
+    AgentName.IMAGE_GENERATION,
     # Runs after CTA optimisation so the deterministic CTA is judged too.
     AgentName.CONTENT_VALIDATION,
     AgentName.OUTPUT_PARSING,
@@ -125,6 +129,10 @@ AGENT_METADATA: dict[AgentName, dict[str, str]] = {
     AgentName.CTA_OPTIMIZATION: {
         "title": "CTA Optimization",
         "description": "Applying CTA rules and brand guidelines",
+    },
+    AgentName.IMAGE_GENERATION: {
+        "title": "Image Generation",
+        "description": "Generating a campaign visual from the brief",
     },
     AgentName.CONTENT_VALIDATION: {
         "title": "Content Validation",

@@ -13,6 +13,7 @@ from app.agents.orchestrator import GenerationWorkflow
 from app.agents.types import (
     CopyRequest,
     ExtractedBrief,
+    GeneratedImage,
     GroundingResult,
     GroundingSourceData,
     ModelInfo,
@@ -25,6 +26,7 @@ __all__ = [
     "CTARuleData",
     "CopyRequest",
     "ExtractedBrief",
+    "GeneratedImage",
     "GenerationWorkflow",
     "GroundingResult",
     "GroundingSourceData",

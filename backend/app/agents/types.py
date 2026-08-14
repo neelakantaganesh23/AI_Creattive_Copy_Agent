@@ -106,6 +106,14 @@ class CopyRequest:
 
 
 @dataclass(slots=True)
+class GeneratedImage:
+    """Raw bytes produced by the image generation stage, before storage."""
+
+    data: bytes
+    media_type: str
+
+
+@dataclass(slots=True)
 class ModelInfo:
     """Which models the current runtime is wired to, for logging and display."""
 

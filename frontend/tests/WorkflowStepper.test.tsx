@@ -8,7 +8,7 @@ import { buildSteps, renderWithProviders } from './utils';
 
 describe('WorkflowStepper', () => {
   it('lists every stage as pending before a run starts', () => {
-    renderWithProviders(<WorkflowStepper />, { withAuth: false });
+    renderWithProviders(<WorkflowStepper />);
 
     for (const title of [
       'Data Extraction',
@@ -16,6 +16,7 @@ describe('WorkflowStepper', () => {
       'Copy Generation',
       'Repetition Fix',
       'CTA Optimization',
+      'Image Generation',
       'Content Validation',
       'Output Parsing & Logging',
     ]) {
@@ -29,9 +30,7 @@ describe('WorkflowStepper', () => {
     steps[2] = { ...steps[2]!, status: 'in_progress' };
     steps[1] = { ...steps[1]!, status: 'skipped' };
 
-    renderWithProviders(<WorkflowStepper steps={steps} progress={0.5} isRunning />, {
-      withAuth: false,
-    });
+    renderWithProviders(<WorkflowStepper steps={steps} progress={0.5} isRunning />);
 
     expect(screen.getAllByText('Completed')).toHaveLength(4);
     expect(screen.getByText('In Progress')).toBeInTheDocument();
@@ -39,9 +38,7 @@ describe('WorkflowStepper', () => {
   });
 
   it('announces progress to assistive technology while running', () => {
-    renderWithProviders(<WorkflowStepper steps={buildSteps()} progress={0.5} isRunning />, {
-      withAuth: false,
-    });
+    renderWithProviders(<WorkflowStepper steps={buildSteps()} progress={0.5} isRunning />);
 
     expect(
       screen.getByText('Generation in progress, 50 percent complete.'),
@@ -57,7 +54,7 @@ describe('WorkflowStepper', () => {
       error_message: 'Web search grounding failed.',
     };
 
-    renderWithProviders(<WorkflowStepper steps={steps} />, { withAuth: false });
+    renderWithProviders(<WorkflowStepper steps={steps} />);
 
     expect(screen.getByText('Web search grounding failed.')).toBeInTheDocument();
     expect(screen.getByText('Failed')).toBeInTheDocument();

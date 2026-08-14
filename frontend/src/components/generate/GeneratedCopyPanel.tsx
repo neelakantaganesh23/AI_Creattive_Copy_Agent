@@ -277,7 +277,11 @@ export const GeneratedCopyPanel = ({
 
           {tab === 'email' && (
             <Box sx={{ width: { xs: '100%', lg: 420 }, flexShrink: 0 }}>
-              <EmailPreview copy={output.email} brandName={generation?.brand_name} />
+              <EmailPreview
+                copy={output.email}
+                brandName={generation?.brand_name}
+                imageUrl={output.image_url}
+              />
             </Box>
           )}
         </Stack>

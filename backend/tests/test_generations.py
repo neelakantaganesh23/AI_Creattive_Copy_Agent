@@ -25,16 +25,18 @@ def test_generation_runs_every_stage(client: TestClient, marketer_headers, taxon
 
     assert status["status"] == "completed"
     assert status["progress"] == 1.0
-    assert [step["sequence"] for step in status["steps"]] == [1, 2, 3, 4, 5, 6, 7]
+    assert [step["sequence"] for step in status["steps"]] == list(range(1, len(AGENT_SEQUENCE) + 1))
     assert [step["agent_name"] for step in status["steps"]] == [
         "data_extraction",
         "web_search_grounding",
         "copy_generation",
         "repetition_fix",
         "cta_optimization",
+        "image_generation",
         "content_validation",
         "output_parsing",
     ]
+    assert status["output"]["image_url"].startswith("/media/")
     # Grounding is disabled in tests, so that stage is skipped rather than failed.
     assert {step["status"] for step in status["steps"]} <= {"completed", "skipped"}
 

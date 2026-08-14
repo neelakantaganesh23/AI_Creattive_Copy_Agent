@@ -10,11 +10,14 @@ Nothing here is used when ``AI_PROVIDER=gemini``.
 
 from __future__ import annotations
 
+import hashlib
 import re
+import textwrap
 from typing import Any
+from xml.sax.saxutils import escape
 
 from app.agents import rules as rules_engine
-from app.agents.types import CopyRequest, ExtractedBrief
+from app.agents.types import CopyRequest, ExtractedBrief, GeneratedImage
 from app.core.logging import get_logger
 from app.schemas.copy_output import CopyBundle, EmailCopy, MobileCopy, SMSCopy
 from app.utils.text import similarity, truncate
@@ -406,6 +409,50 @@ def _extract_key_message(brief: str) -> str | None:
     if not match:
         return None
     return truncate(match.group(1).split("\n")[0].strip(), 160)
+
+
+# -- Image placeholder -------------------------------------------------------
+
+_PALETTE: tuple[tuple[str, str], ...] = (
+    ("#2B3358", "#4A5382"),
+    ("#1F5E4A", "#2E8B6F"),
+    ("#5C2E5C", "#8B4A8B"),
+    ("#7A3B12", "#C4691F"),
+    ("#1B4965", "#3A7CA5"),
+)
+
+
+def generate_placeholder_image(prompt: str) -> GeneratedImage:
+    """A deterministic SVG standing in for a real generated image.
+
+    Not a photorealistic mock -- an SVG is enough to exercise storage, the API
+    response and the frontend `<img>` render without a binary image dependency,
+    and it stays reproducible across runs of the same prompt.
+    """
+    digest = hashlib.sha256(prompt.encode("utf-8")).digest()
+    dark, light = _PALETTE[digest[0] % len(_PALETTE)]
+
+    label = textwrap.shorten(prompt.strip().splitlines()[0], width=42, placeholder="...")
+    svg = f"""\
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="{dark}" />
+      <stop offset="100%" stop-color="{light}" />
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#g)" />
+  <text x="512" y="512" text-anchor="middle" dominant-baseline="middle"
+        font-family="sans-serif" font-size="40" fill="#FFFFFF" opacity="0.9">
+    {escape(label)}
+  </text>
+  <text x="512" y="980" text-anchor="middle" font-family="sans-serif" font-size="20"
+        fill="#FFFFFF" opacity="0.6">
+    Mock runtime placeholder
+  </text>
+</svg>
+"""
+    return GeneratedImage(data=svg.encode("utf-8"), media_type="image/svg+xml")
 
 
 def structured_brief(brief: str, language: str) -> ExtractedBrief:

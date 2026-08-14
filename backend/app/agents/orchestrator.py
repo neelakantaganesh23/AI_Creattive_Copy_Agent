@@ -9,6 +9,7 @@ from app.agents.copy_generation import CopyGenerationAgent
 from app.agents.cta import CTAOptimizationAgent
 from app.agents.extraction import DataExtractionAgent
 from app.agents.grounding import WebSearchGroundingAgent
+from app.agents.image_generation import ImageGenerationAgent
 from app.agents.output_parsing import OutputParsingAgent
 from app.agents.repetition import RepetitionFixAgent
 from app.agents.runtime import model_info
@@ -17,6 +18,8 @@ from app.core.errors import AppError, GenerationFailedError
 from app.core.logging import get_logger
 from app.schemas.copy_output import GenerationOutput
 from app.services.ai.grounding import GroundingProvider
+from app.services.ai.image_generation import ImageProvider
+from app.services.media import MediaStorage
 
 logger = get_logger("app.agents.orchestrator")
 
@@ -28,13 +31,19 @@ class GenerationWorkflow:
     after CTA optimisation so the deterministic CTA is judged too.
     """
 
-    def __init__(self, grounding_provider: GroundingProvider) -> None:
+    def __init__(
+        self,
+        grounding_provider: GroundingProvider,
+        media_storage: MediaStorage,
+        image_provider: ImageProvider,
+    ) -> None:
         self._agents = (
             DataExtractionAgent(),
             WebSearchGroundingAgent(grounding_provider),
             CopyGenerationAgent(),
             RepetitionFixAgent(),
             CTAOptimizationAgent(),
+            ImageGenerationAgent(media_storage, image_provider),
             ContentValidationAgent(),
             OutputParsingAgent(),
         )

@@ -78,6 +78,55 @@ Rules:
 """
 
 
+IMAGE_SAFETY_INSTRUCTIONS = """\
+Do not depict any real, named person, celebrity or public figure, and do not depict
+any copyrighted character, logo, or trademarked mascot. Generate an original product
+or lifestyle visual only.
+"""
+
+
+def build_image_prompt(
+    *,
+    headline: str,
+    brand_name: str | None,
+    product_name: str | None,
+    features: list[str],
+    tone: str | None,
+    brand_guidelines: str | None,
+) -> str:
+    """Build an image prompt from the finished copy.
+
+    Deliberately excludes anything from ``ExtractedBrief.athletes``: even when a
+    brief names a real endorser, the image prompt never carries that name, so the
+    model has nothing to render a likeness from.
+    """
+    sections = [
+        "Generate a marketing campaign visual for the following product.",
+        f"Campaign headline: {headline}",
+    ]
+    if brand_name:
+        sections.append(f"Brand: {brand_name}")
+    if product_name:
+        sections.append(f"Product: {product_name}")
+    if features:
+        sections.append(f"Key features to convey visually: {', '.join(features)}")
+    if tone:
+        sections.append(f"Tone: {tone}")
+    if brand_guidelines:
+        sections.append(f"Brand guidelines: {brand_guidelines}")
+    sections.append(IMAGE_SAFETY_INSTRUCTIONS)
+    return "\n".join(sections)
+
+
+def full_prompt_for_display(instructions: str, prompt: str) -> str:
+    """Combine an agent's static instructions with its per-run prompt.
+
+    Used only to show admins exactly what was sent to the model for a given
+    generation -- the actual API call passes instructions and prompt separately.
+    """
+    return f"--- Instructions ---\n{instructions}\n--- Prompt ---\n{prompt}"
+
+
 def build_extraction_prompt(brief: str, language: str) -> str:
     return (
         f"Campaign brief (language: {language}):\n"

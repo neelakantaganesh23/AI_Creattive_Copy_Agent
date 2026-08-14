@@ -18,6 +18,9 @@ htmlcov/
 # Databases (local development artefacts)
 *.db
 *.sqlite
+
+# Generated images (local development artefacts)
+backend/media/
 *.sqlite3
 # Pre-migration snapshots hold real user rows and password hashes.
 *.db.backup

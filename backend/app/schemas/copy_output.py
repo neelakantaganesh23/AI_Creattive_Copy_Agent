@@ -126,6 +126,10 @@ class GenerationOutput(BaseModel):
     grounded: bool = False
     provider: str = "mock"
     models: dict[str, str | None] = Field(default_factory=dict)
+    # URL path served under MEDIA_URL_PREFIX, e.g. "/media/aeroflex-ab12cd34.png".
+    # Null when image generation is disabled, or failed for this run.
+    image_url: str | None = None
+    image_prompt: str | None = None
 
     @property
     def bundle(self) -> CopyBundle:

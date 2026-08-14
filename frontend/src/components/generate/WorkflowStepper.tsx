@@ -11,18 +11,24 @@ import {
 import {
   CheckCircle2,
   CircleDot,
+  ClipboardCheck,
   Database,
   FileSearch,
   Globe,
+  Image as ImageIcon,
   PencilLine,
   ShieldCheck,
   Target,
+  Terminal,
   TriangleAlert,
   Workflow,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { useState } from 'react';
 
+import { PromptDialog } from '@/components/common/PromptDialog';
 import { StatusChip } from '@/components/common/StatusChip';
+import { useAuth } from '@/hooks/useAuth';
 import { PENDING_STEPS } from '@/hooks/useGenerationRunner';
 import type { AgentExecution, AgentStatus } from '@/types/models';
 import { formatDuration } from '@/utils/format';
@@ -33,11 +39,13 @@ const AGENT_ICONS: Record<string, LucideIcon> = {
   copy_generation: PencilLine,
   repetition_fix: ShieldCheck,
   cta_optimization: Target,
+  image_generation: ImageIcon,
+  content_validation: ClipboardCheck,
   output_parsing: Database,
 };
 
 type StepLike = Pick<AgentExecution, 'agent_name' | 'title' | 'description'> &
-  Partial<Pick<AgentExecution, 'status' | 'duration_ms' | 'error_message'>>;
+  Partial<Pick<AgentExecution, 'status' | 'duration_ms' | 'error_message' | 'input_summary'>>;
 
 interface WorkflowStepperProps {
   steps?: AgentExecution[];
@@ -57,7 +65,12 @@ export const WorkflowStepper = ({
   progress = 0,
   isRunning = false,
 }: WorkflowStepperProps): JSX.Element => {
+  const { hasRole } = useAuth();
+  const [promptStep, setPromptStep] = useState<StepLike | null>(null);
   const rows: StepLike[] = steps?.length ? steps : PENDING_STEPS;
+  // Prompts are only meaningful once a stage has actually run, and are shown
+  // to admins only -- they can reveal brand guidelines and configured rules.
+  const canViewPrompts = hasRole('admin');
 
   return (
     <Card component="section" aria-labelledby="workflow-heading">
@@ -106,6 +119,7 @@ export const WorkflowStepper = ({
           {rows.map((step, index) => {
             const Icon = AGENT_ICONS[step.agent_name] ?? CircleDot;
             const status: AgentStatus = step.status ?? 'pending';
+            const hasPrompt = canViewPrompts && Boolean(step.input_summary);
             return (
               <Stack
                 key={step.agent_name}
@@ -113,11 +127,14 @@ export const WorkflowStepper = ({
                 direction="row"
                 spacing={1.5}
                 alignItems="center"
+                onClick={hasPrompt ? () => setPromptStep(step) : undefined}
                 sx={{
                   py: 1.25,
                   px: 1,
                   borderRadius: 2,
+                  cursor: hasPrompt ? 'pointer' : 'default',
                   bgcolor: status === 'in_progress' ? 'rgba(101,72,232,0.06)' : 'transparent',
+                  '&:hover': hasPrompt ? { bgcolor: 'action.hover' } : undefined,
                 }}
               >
                 <Typography
@@ -150,6 +167,14 @@ export const WorkflowStepper = ({
                   </Typography>
                 </Box>
 
+                {hasPrompt && (
+                  <Tooltip title="View the prompt sent to the model">
+                    <Box sx={{ color: 'text.secondary', display: 'flex' }}>
+                      <Terminal size={15} />
+                    </Box>
+                  </Tooltip>
+                )}
+
                 {step.duration_ms != null && step.duration_ms > 0 && (
                   <Typography
                     variant="caption"
@@ -173,6 +198,13 @@ export const WorkflowStepper = ({
           })}
         </Stack>
       </CardContent>
+
+      <PromptDialog
+        open={promptStep !== null}
+        onClose={() => setPromptStep(null)}
+        title={promptStep?.title ?? ''}
+        prompt={promptStep?.input_summary ?? null}
+      />
     </Card>
   );
 };

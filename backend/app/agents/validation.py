@@ -19,7 +19,7 @@ from pydantic_ai import Agent
 from app.agents import mock_content, prompts, runtime
 from app.agents.base import WorkflowContext, WorkflowRecorder
 from app.agents.copy_generation import build_copy_request
-from app.agents.rules import evaluate_rules, guideline_rules
+from app.agents.rules import evaluate_rules
 from app.agents.types import CopyRequest
 from app.core.config import settings
 from app.core.errors import AIProviderError
@@ -96,13 +96,17 @@ class ContentValidationAgent:
             recorder.skip(self.name, reason="Content validation is disabled by configuration.")
             return
 
-        guidelines = guideline_rules(context.rules)
+        request = build_copy_request(context)
+        # The full prompt sent to the judge for the first pass. If the copy is
+        # revised, later passes judge different copy against the same
+        # instructions and guidelines, so this remains representative.
         recorder.start(
             self.name,
-            input_summary=f"judging against {len(guidelines)} guideline rules",
+            input_summary=prompts.full_prompt_for_display(
+                prompts.JUDGE_INSTRUCTIONS, prompts.build_judge_prompt(request, context.bundle)
+            ),
         )
 
-        request = build_copy_request(context)
         try:
             verdict = await self._judge_with_revisions(context, request)
         except AIProviderError as exc:
