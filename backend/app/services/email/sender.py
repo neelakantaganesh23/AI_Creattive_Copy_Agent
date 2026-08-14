@@ -85,6 +85,19 @@ class ResendEmailSender:
                 json=payload,
                 headers={"Authorization": f"Bearer {self._api_key}"},
             )
+            if response.is_error:
+                # raise_for_status reports the status code and nothing else, but the
+                # reason a message is refused -- an unverified sender domain, a
+                # recipient the shared sending domain will not deliver to -- is only
+                # in the body. Without it the operator has no way to tell which.
+                logger.error(
+                    "email provider rejected the message",
+                    extra={
+                        "provider": self.name,
+                        "status_code": response.status_code,
+                        "provider_message": response.text[:500],
+                    },
+                )
             response.raise_for_status()
         logger.info("email sent", extra={"provider": self.name, "to": message.to})
 

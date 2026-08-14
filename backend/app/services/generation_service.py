@@ -471,6 +471,7 @@ class GenerationService:
             logger.warning(
                 "test email delivery failed",
                 extra={"generation_id": generation_id, "user_id": user.id},
+                exc_info=True,
             )
             raise EmailDeliveryError() from exc
         logger.info(
