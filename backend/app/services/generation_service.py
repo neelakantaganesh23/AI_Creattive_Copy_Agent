@@ -572,6 +572,44 @@ class GenerationService:
         return segment
 
 
+def fail_interrupted_generations(session: Session) -> int:
+    """Fail every generation left mid-run by a previous process, returning the count.
+
+    The workflow runs as an in-process background task, so a generation only ever
+    lives inside the process that queued it. Anything still ``pending`` or
+    ``running`` when the application starts belongs to a process that is gone --
+    a redeploy, a crash, or a free-tier instance being put to sleep -- and nothing
+    will ever advance it. Without this the row keeps its non-terminal status
+    forever and the frontend polls it forever.
+    """
+    repo = GenerationRepository(session)
+    executions = AgentExecutionRepository(session)
+    interrupted = repo.list_unfinished()
+    if not interrupted:
+        return 0
+
+    for generation in interrupted:
+        generation.status = GenerationStatus.FAILED
+        generation.error_code = ErrorCode.GENERATION_FAILED
+        generation.error_message = (
+            "The generation was interrupted when the server restarted. Please try again."
+        )
+        for row in executions.list_for_generation(generation.id):
+            if row.status == AgentStatus.IN_PROGRESS:
+                row.status = AgentStatus.FAILED
+                row.error_message = "Interrupted by a server restart."
+                row.completed_at = datetime.now(UTC)
+            elif row.status == AgentStatus.PENDING:
+                row.status = AgentStatus.SKIPPED
+
+    session.commit()
+    logger.warning(
+        "failed interrupted generations",
+        extra={"count": len(interrupted), "generation_ids": [g.id for g in interrupted]},
+    )
+    return len(interrupted)
+
+
 def _duration_ms(started_at: datetime | None, completed_at: datetime) -> int:
     if started_at is None:
         return 0
