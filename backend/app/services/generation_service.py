@@ -16,6 +16,9 @@ from app.agents.base import (
     WorkflowContext,
 )
 from app.agents.orchestrator import GenerationWorkflow
+from app.agents.rules import applicable_rules
+from app.agents.runtime import model_info
+from app.agents.types import RuleData
 from app.core.config import settings
 from app.core.errors import (
     AppError,
@@ -43,6 +46,7 @@ from app.repositories.generation_repository import (
     GenerationRepository,
     GroundingSourceRepository,
 )
+from app.repositories.rule_repository import RuleRepository
 from app.repositories.taxonomy_repository import (
     AudienceSegmentRepository,
     BrandRepository,
@@ -59,7 +63,7 @@ from app.schemas.generation import (
     GenerationSummary,
     GroundingSourceResponse,
 )
-from app.services.ai.factory import get_ai_provider, get_grounding_provider
+from app.services.ai.factory import get_grounding_provider
 from app.utils.text import slugify_title
 
 logger = get_logger("app.generation")
@@ -133,11 +137,12 @@ class GenerationService:
         self.products = ProductRepository(session)
         self.segments = AudienceSegmentRepository(session)
         self.cta_rules = CTARuleRepository(session)
+        self.rules = RuleRepository(session)
         self.templates = TemplateRepository(session)
 
     # -- Creation ------------------------------------------------------------
     def create(self, payload: GenerationCreate, user: User) -> Generation:
-        """Persist a queued generation together with its six pending stages."""
+        """Persist a queued generation together with one pending row per stage."""
         brand = self._require_brand(payload.brand_id)
         product = self._require_product(payload.product_id, brand_id=payload.brand_id)
         segment = self._require_segment(payload.audience_segment_id)
@@ -153,7 +158,7 @@ class GenerationService:
             language=payload.language,
             status=GenerationStatus.PENDING,
             grounded=False,
-            provider=get_ai_provider().name,
+            provider=model_info().name,
         )
         for index, agent in enumerate(AGENT_SEQUENCE, start=1):
             self.agent_executions.create(
@@ -201,7 +206,7 @@ class GenerationService:
             generation.status = GenerationStatus.RUNNING
             session.commit()
 
-            workflow = GenerationWorkflow(get_ai_provider(), get_grounding_provider())
+            workflow = GenerationWorkflow(get_grounding_provider())
             try:
                 output, duration_ms = await asyncio.wait_for(
                     workflow.run(context, recorder),
@@ -351,6 +356,27 @@ class GenerationService:
             )
             for rule in CTARuleRepository(session).list_active()
         ]
+        content_rules = applicable_rules(
+            [
+                RuleData(
+                    id=rule.id,
+                    name=rule.name,
+                    rule_type=rule.rule_type,
+                    value=rule.value,
+                    severity=rule.severity,
+                    channel=rule.channel,
+                    field_name=rule.field_name,
+                    brand_id=rule.brand_id,
+                    audience_segment_id=rule.audience_segment_id,
+                    description=rule.description,
+                    priority=rule.priority,
+                )
+                for rule in RuleRepository(session).list_active()
+            ],
+            channel=Channel(generation.channel),
+            brand_id=generation.brand_id,
+            audience_segment_id=generation.audience_segment_id,
+        )
         template = TemplateRepository(session).get_active_for_channel(generation.channel)
         previous_copy = self._recent_copy_texts(
             session,
@@ -368,6 +394,7 @@ class GenerationService:
             product=product,
             audience=audience,
             cta_rules=rules,
+            rules=content_rules,
             prompt_template=template.prompt_template if template else None,
             previous_copy=previous_copy,
         )

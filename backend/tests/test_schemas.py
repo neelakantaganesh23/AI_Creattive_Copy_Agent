@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 
+from app.agents.rules import evaluate_rules
+from app.agents.types import RuleData
 from app.core.errors import TokenError
 from app.core.logging import redact
 from app.core.rate_limit import RateLimiter, RateLimitPolicy
@@ -15,13 +17,8 @@ from app.core.security import (
     hash_token,
     verify_password,
 )
-from app.schemas.copy_output import (
-    CopyBundle,
-    EmailCopy,
-    MobileCopy,
-    SMSCopy,
-    check_channel_limits,
-)
+from app.models.enums import Channel, RuleType, Severity
+from app.schemas.copy_output import CopyBundle, EmailCopy, MobileCopy, SMSCopy
 from app.schemas.generation import GenerationCreate
 from app.utils.text import similarity, slugify_title, truncate
 
@@ -38,7 +35,19 @@ def test_copy_fields_are_collapsed_to_one_line() -> None:
     assert copy.sub_heading == "A b"
 
 
-def test_check_channel_limits_flags_overlong_fields() -> None:
+def _limit_rule(field: str, limit: int) -> RuleData:
+    return RuleData(
+        id=1,
+        name=f"email {field} length",
+        rule_type=RuleType.MAX_CHARS,
+        value=str(limit),
+        severity=Severity.ERROR,
+        channel=Channel.EMAIL.value,
+        field_name=field,
+    )
+
+
+def test_rules_flag_overlong_fields() -> None:
     bundle = CopyBundle(
         email=EmailCopy(headline="x" * 200, sub_heading="fine", cta="SHOP"),
         mobile=MobileCopy(
@@ -50,12 +59,13 @@ def test_check_channel_limits_flags_overlong_fields() -> None:
         ),
         sms=SMSCopy(description="fine"),
     )
-    warnings = check_channel_limits(bundle)
-    assert len(warnings) == 1
-    assert "EMAIL headline" in warnings[0]
+    violations = evaluate_rules(bundle, [_limit_rule("headline", 80)], Channel.EMAIL)
+    assert len(violations) == 1
+    assert violations[0].field == "headline"
+    assert "200 characters" in violations[0].explanation
 
 
-def test_check_channel_limits_passes_valid_copy() -> None:
+def test_rules_pass_valid_copy() -> None:
     bundle = CopyBundle(
         email=EmailCopy(headline="Short", sub_heading="Short", cta="SHOP"),
         mobile=MobileCopy(
@@ -63,7 +73,7 @@ def test_check_channel_limits_passes_valid_copy() -> None:
         ),
         sms=SMSCopy(description="Short"),
     )
-    assert check_channel_limits(bundle) == []
+    assert evaluate_rules(bundle, [_limit_rule("headline", 80)], Channel.EMAIL) == []
 
 
 # -- Generation request -----------------------------------------------------

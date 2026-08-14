@@ -1,4 +1,27 @@
-import type { AgentStatus, Channel, GenerationStatus } from '@/types/models';
+import type { AgentStatus, Channel, GenerationStatus, RuleType } from '@/types/models';
+
+export const RULE_TYPE_LABELS: Record<RuleType, string> = {
+  max_chars: 'Maximum characters',
+  min_chars: 'Minimum characters',
+  max_words: 'Maximum words',
+  min_words: 'Minimum words',
+  forbidden_terms: 'Forbidden terms',
+  required_terms: 'Required terms',
+  regex: 'Must match pattern',
+  guideline: 'Guideline (AI judged)',
+};
+
+/** What the `value` column means for each rule type, shown as form help text. */
+export const RULE_VALUE_HINTS: Record<RuleType, string> = {
+  max_chars: 'A whole number, e.g. 50',
+  min_chars: 'A whole number, e.g. 20',
+  max_words: 'A whole number, e.g. 3',
+  min_words: 'A whole number, e.g. 2',
+  forbidden_terms: 'Comma separated, e.g. guarantee, cheapest',
+  required_terms: 'Comma separated, e.g. AeroFlex',
+  regex: 'A regular expression, e.g. ^[A-Z]',
+  guideline: 'Plain English, e.g. Make it sound natural',
+};
 
 export const CHANNEL_LABELS: Record<Channel, string> = {
   email: 'Email',

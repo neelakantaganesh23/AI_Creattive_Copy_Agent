@@ -1,27 +1,10 @@
-"""AI provider abstraction: interface, mock, Gemini, grounding and selection."""
+"""Web search grounding: interface, backends and selection."""
 
-from app.services.ai.factory import (
-    get_ai_provider,
-    get_grounding_provider,
-    reset_provider_cache,
-)
-from app.services.ai.provider import (
-    AIProvider,
-    CopyRequest,
-    ExtractedBrief,
-    GroundingResult,
-    GroundingSourceData,
-    ProviderInfo,
-)
+from app.services.ai.factory import get_grounding_provider, reset_provider_cache
+from app.services.ai.grounding import GroundingProvider
 
 __all__ = [
-    "AIProvider",
-    "CopyRequest",
-    "ExtractedBrief",
-    "GroundingResult",
-    "GroundingSourceData",
-    "ProviderInfo",
-    "get_ai_provider",
+    "GroundingProvider",
     "get_grounding_provider",
     "reset_provider_cache",
 ]

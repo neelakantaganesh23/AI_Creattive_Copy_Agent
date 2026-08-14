@@ -13,10 +13,10 @@ from typing import Protocol
 
 import httpx
 
+from app.agents.types import ExtractedBrief, GroundingResult, GroundingSourceData
 from app.core.config import settings
 from app.core.errors import AINotConfiguredError, GroundingError
 from app.core.logging import get_logger
-from app.services.ai.provider import ExtractedBrief, GroundingResult, GroundingSourceData
 
 logger = get_logger("app.ai.grounding")
 

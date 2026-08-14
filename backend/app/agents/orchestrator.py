@@ -1,4 +1,4 @@
-"""Runs the six-stage generation workflow in order."""
+"""Runs the generation workflow stages in order."""
 
 from __future__ import annotations
 
@@ -11,27 +11,32 @@ from app.agents.extraction import DataExtractionAgent
 from app.agents.grounding import WebSearchGroundingAgent
 from app.agents.output_parsing import OutputParsingAgent
 from app.agents.repetition import RepetitionFixAgent
+from app.agents.runtime import model_info
+from app.agents.validation import ContentValidationAgent
 from app.core.errors import AppError, GenerationFailedError
 from app.core.logging import get_logger
 from app.schemas.copy_output import GenerationOutput
 from app.services.ai.grounding import GroundingProvider
-from app.services.ai.provider import AIProvider
 
 logger = get_logger("app.agents.orchestrator")
 
 
 class GenerationWorkflow:
-    """Sequences the agents and reports progress through the recorder."""
+    """Sequences the agents and reports progress through the recorder.
 
-    def __init__(self, provider: AIProvider, grounding_provider: GroundingProvider) -> None:
-        self._provider = provider
+    The order matches ``AGENT_SEQUENCE``; content validation deliberately runs
+    after CTA optimisation so the deterministic CTA is judged too.
+    """
+
+    def __init__(self, grounding_provider: GroundingProvider) -> None:
         self._agents = (
-            DataExtractionAgent(provider),
+            DataExtractionAgent(),
             WebSearchGroundingAgent(grounding_provider),
-            CopyGenerationAgent(provider),
-            RepetitionFixAgent(provider),
+            CopyGenerationAgent(),
+            RepetitionFixAgent(),
             CTAOptimizationAgent(),
-            OutputParsingAgent(provider),
+            ContentValidationAgent(),
+            OutputParsingAgent(),
         )
 
     async def run(
@@ -73,7 +78,7 @@ class GenerationWorkflow:
             extra={
                 "generation_id": context.generation_id,
                 "duration_ms": duration_ms,
-                "provider": self._provider.name,
+                "provider": model_info().name,
                 "grounded": context.output.grounded,
             },
         )

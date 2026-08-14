@@ -2,21 +2,19 @@
 
 from __future__ import annotations
 
+from app.agents import runtime
 from app.agents.base import WorkflowContext, WorkflowRecorder
-from app.agents.copy_generation import build_copy_request
+from app.agents.copy_generation import build_copy_request, carry_violations, rewrite_for_variety
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.enums import AgentName
 from app.schemas.copy_output import CopyBundle
-from app.services.ai.provider import AIProvider
 from app.utils.text import shared_phrases, similarity
 
 logger = get_logger("app.agents.repetition")
 
 
-def analyse_repetition(
-    bundle: CopyBundle, previous_copy: list[str]
-) -> tuple[float, list[str]]:
+def analyse_repetition(bundle: CopyBundle, previous_copy: list[str]) -> tuple[float, list[str]]:
     """Return the highest similarity against recent copy and the repeated phrases."""
     if not previous_copy:
         return 0.0, []
@@ -40,9 +38,6 @@ class RepetitionFixAgent:
     """
 
     name = AgentName.REPETITION_FIX
-
-    def __init__(self, provider: AIProvider) -> None:
-        self._provider = provider
 
     async def run(self, context: WorkflowContext, recorder: WorkflowRecorder) -> None:
         assert context.bundle is not None, "copy generation must run before repetition fix"
@@ -76,12 +71,13 @@ class RepetitionFixAgent:
             },
         )
         request = build_copy_request(context)
-        rewritten = await self._provider.rewrite_for_variety(request, context.bundle, phrases)
+        rewritten, violations = await rewrite_for_variety(request, context.bundle, phrases)
         new_score, _ = analyse_repetition(rewritten, context.previous_copy)
 
         context.bundle = rewritten
         context.quality.repetition_fixed = True
         context.quality.repetition_score = round(new_score, 4)
+        carry_violations(context, violations)
         if new_score >= threshold:
             context.warnings.append(
                 "Generated copy still resembles a recent generation after one rewrite."
@@ -96,5 +92,5 @@ class RepetitionFixAgent:
                 "rewritten": True,
                 "repeated_phrases": phrases[:5],
             },
-            model_name=self._provider.info().quality_model,
+            model_name=runtime.model_name("quality"),
         )

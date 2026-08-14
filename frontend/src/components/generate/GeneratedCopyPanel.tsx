@@ -1,5 +1,4 @@
 import {
-  Alert,
   Box,
   Button,
   Card,
@@ -33,6 +32,7 @@ import { useState } from 'react';
 
 import { StatusChip } from '@/components/common/StatusChip';
 import { EmailPreview } from '@/components/generate/EmailPreview';
+import { QualityReport } from '@/components/generate/QualityReport';
 import {
   copyToClipboard,
   downloadAsJson,
@@ -183,19 +183,28 @@ export const GeneratedCopyPanel = ({
             variant="outlined"
             label={output.grounded ? 'Externally grounded' : 'Not externally grounded'}
           />
+          {output.quality.judge_score !== null && (
+            <Chip
+              size="small"
+              variant="outlined"
+              color={output.quality.judge_score >= 0.7 ? 'success' : 'warning'}
+              label={`Judge score: ${Math.round(output.quality.judge_score * 100)}%`}
+            />
+          )}
+          {output.quality.revisions > 0 && (
+            <Chip
+              size="small"
+              variant="outlined"
+              label={
+                output.quality.revisions === 1
+                  ? 'Revised once after review'
+                  : `Revised ${output.quality.revisions} times after review`
+              }
+            />
+          )}
         </Stack>
 
-        {output.quality.warnings.length > 0 && (
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            <Stack component="ul" sx={{ m: 0, pl: 2 }}>
-              {output.quality.warnings.map((warning) => (
-                <li key={warning}>
-                  <Typography variant="body2">{warning}</Typography>
-                </li>
-              ))}
-            </Stack>
-          </Alert>
-        )}
+        <QualityReport quality={output.quality} />
 
         <Tabs
           value={tab}

@@ -13,6 +13,7 @@ import { LogsPage } from '@/pages/LogsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { RegisterPage } from '@/pages/RegisterPage';
 import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
+import { RulesPage } from '@/pages/RulesPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { TemplatesPage } from '@/pages/TemplatesPage';
 import { ProtectedRoute, PublicOnlyRoute } from '@/routes/ProtectedRoute';
@@ -40,6 +41,7 @@ export const AppRoutes = (): JSX.Element => (
         <Route path="/brands" element={<BrandsPage />} />
         <Route path="/audience-segments" element={<AudienceSegmentsPage />} />
         <Route path="/cta-rules" element={<CtaRulesPage />} />
+        <Route path="/rules" element={<RulesPage />} />
         <Route path="/logs" element={<LogsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>

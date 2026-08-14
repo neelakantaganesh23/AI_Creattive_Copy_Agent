@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
+from app.models.enums import AGENT_SEQUENCE
 from tests.conftest import SAMPLE_BRIEF, generation_payload
 
 
@@ -16,7 +17,7 @@ def create_generation(client, headers, taxonomy, **overrides):
     return response.json()
 
 
-def test_generation_runs_all_six_stages(client: TestClient, marketer_headers, taxonomy) -> None:
+def test_generation_runs_every_stage(client: TestClient, marketer_headers, taxonomy) -> None:
     generation = create_generation(client, marketer_headers, taxonomy)
     status = client.get(
         f"/api/v1/generations/{generation['id']}/status", headers=marketer_headers
@@ -24,13 +25,14 @@ def test_generation_runs_all_six_stages(client: TestClient, marketer_headers, ta
 
     assert status["status"] == "completed"
     assert status["progress"] == 1.0
-    assert [step["sequence"] for step in status["steps"]] == [1, 2, 3, 4, 5, 6]
+    assert [step["sequence"] for step in status["steps"]] == [1, 2, 3, 4, 5, 6, 7]
     assert [step["agent_name"] for step in status["steps"]] == [
         "data_extraction",
         "web_search_grounding",
         "copy_generation",
         "repetition_fix",
         "cta_optimization",
+        "content_validation",
         "output_parsing",
     ]
     # Grounding is disabled in tests, so that stage is skipped rather than failed.
@@ -253,7 +255,7 @@ def test_execution_logs_record_agent_details(
         params={"generation_id": generation["id"]},
     ).json()
 
-    assert logs["total"] == 6
+    assert logs["total"] == len(AGENT_SEQUENCE)
     extraction = next(
         item for item in logs["items"] if item["agent_name"] == "data_extraction"
     )

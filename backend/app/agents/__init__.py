@@ -1,4 +1,4 @@
-"""The six-agent generation workflow (§12)."""
+"""The generation workflow: Pydantic AI agents plus the deterministic stages."""
 
 from app.agents.base import (
     AudienceData,
@@ -10,14 +10,28 @@ from app.agents.base import (
     WorkflowRecorder,
 )
 from app.agents.orchestrator import GenerationWorkflow
+from app.agents.types import (
+    CopyRequest,
+    ExtractedBrief,
+    GroundingResult,
+    GroundingSourceData,
+    ModelInfo,
+    RuleData,
+)
 
 __all__ = [
     "AudienceData",
     "BrandData",
     "CTARuleData",
+    "CopyRequest",
+    "ExtractedBrief",
     "GenerationWorkflow",
+    "GroundingResult",
+    "GroundingSourceData",
+    "ModelInfo",
     "NullRecorder",
     "ProductData",
+    "RuleData",
     "WorkflowContext",
     "WorkflowRecorder",
 ]
