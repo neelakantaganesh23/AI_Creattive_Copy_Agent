@@ -239,3 +239,34 @@ async def test_console_sender_does_not_raise() -> None:
     await ConsoleEmailSender().send(
         EmailMessage(to="x@example.com", subject="s", text_body="body")
     )
+
+
+async def test_resend_logs_why_the_provider_refused(monkeypatch, caplog) -> None:
+    """The provider's explanation is the only thing that identifies the misconfiguration."""
+    import httpx
+
+    from app.services.email import sender as sender_module
+
+    monkeypatch.setattr(settings, "resend_api_key", "re_test_key")
+    refusal = {"message": "The example.com domain is not verified.", "name": "validation_error"}
+
+    real_client = httpx.AsyncClient
+
+    def fake_client(*_args, **kwargs):
+        return real_client(
+            transport=httpx.MockTransport(lambda _r: httpx.Response(403, json=refusal)), **kwargs
+        )
+
+    # The sender imports httpx inside the method, so patch the module itself.
+    monkeypatch.setattr(httpx, "AsyncClient", fake_client)
+
+    with caplog.at_level("ERROR"), pytest.raises(httpx.HTTPStatusError):
+        await sender_module.ResendEmailSender().send(
+            EmailMessage(to="x@example.com", subject="s", text_body="body")
+        )
+
+    logged = "".join(record.getMessage() + str(record.__dict__) for record in caplog.records)
+    assert "domain is not verified" in logged
+    assert "403" in logged
+    # The credential must never reach the log.
+    assert "re_test_key" not in logged
