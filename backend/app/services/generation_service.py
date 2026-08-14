@@ -210,10 +210,13 @@ class GenerationService:
             generation.status = GenerationStatus.RUNNING
             session.commit()
 
-            workflow = GenerationWorkflow(
-                get_grounding_provider(), get_media_storage(), get_image_provider()
-            )
             try:
+                # Built inside the try: a provider whose credentials are missing
+                # raises AINotConfiguredError from its constructor, and that has to
+                # fail the generation rather than escape and strand it at RUNNING.
+                workflow = GenerationWorkflow(
+                    get_grounding_provider(), get_media_storage(), get_image_provider()
+                )
                 output, duration_ms = await asyncio.wait_for(
                     workflow.run(context, recorder),
                     timeout=settings.generation_timeout_seconds,

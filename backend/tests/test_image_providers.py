@@ -38,6 +38,37 @@ def test_stability_requires_an_api_key(monkeypatch) -> None:
         StabilityImageProvider()
 
 
+def test_a_provider_missing_its_key_fails_the_generation(
+    client, marketer_headers, taxonomy, monkeypatch
+) -> None:
+    """A provider that cannot be constructed must not strand the run at 'running'.
+
+    The provider is built for each run, so a missing credential raises before the
+    workflow starts. That has to be reported as a failed generation.
+    """
+    from app.core.config import settings as app_settings
+    from app.services.ai.factory import reset_provider_cache
+    from tests.conftest import generation_payload
+
+    monkeypatch.setattr(app_settings, "image_provider", "stability")
+    monkeypatch.setattr(app_settings, "stability_api_key", None)
+    reset_provider_cache()
+
+    response = client.post(
+        "/api/v1/generations", headers=marketer_headers, json=generation_payload(taxonomy)
+    )
+    assert response.status_code == 202, response.text
+
+    detail = client.get(
+        f"/api/v1/generations/{response.json()['id']}", headers=marketer_headers
+    ).json()
+    assert detail["status"] == "failed"
+    assert detail["error_code"] == "AI_NOT_CONFIGURED"
+    assert "STABILITY_API_KEY" in detail["error_message"]
+
+    reset_provider_cache()
+
+
 def _stability_provider(monkeypatch, handler):
     """Build a Stability provider whose HTTP calls hit a mock transport."""
     from app.core.config import settings as app_settings
