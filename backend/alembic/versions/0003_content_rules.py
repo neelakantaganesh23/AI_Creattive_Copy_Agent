@@ -6,7 +6,7 @@ the character limits it had before the upgrade. From here on the table is the
 source of truth and admins edit it through the UI.
 
 Revision ID: 0003_content_rules
-Revises: 0002_google_signin_password_reset
+Revises: 0002_google_signin_reset
 Create Date: 2026-08-14
 """
 
@@ -18,7 +18,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = '0003_content_rules'
-down_revision: str | None = '0002_google_signin_password_reset'
+down_revision: str | None = '0002_google_signin_reset'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

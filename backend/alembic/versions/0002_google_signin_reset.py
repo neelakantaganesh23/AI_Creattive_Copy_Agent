@@ -1,6 +1,6 @@
 """google sign-in and password reset
 
-Revision ID: 0002_google_signin_password_reset
+Revision ID: 0002_google_signin_reset
 Revises: 0001_initial
 Create Date: 2026-08-13 21:48:44.063915
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision: str = '0002_google_signin_password_reset'
+revision: str = '0002_google_signin_reset'
 down_revision: str | None = '0001_initial'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
