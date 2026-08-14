@@ -15,6 +15,7 @@ provider, and switches to Google Gemini through configuration alone.
 - [Quick start](#quick-start)
 - [Development login credentials](#development-login-credentials)
 - [Project structure](#project-structure)
+- [Diagrams](#diagrams)
 - [The generation workflow](#the-generation-workflow)
 - [API summary](#api-summary)
 - [Database and migrations](#database-and-migrations)
@@ -185,10 +186,30 @@ in production.
 │   ├── eslint.config.js
 │   ├── vite.config.ts
 │   └── .env.example
+├── docs/
+│   └── architecture.drawio   # 4-page editable diagram (app.diagrams.net)
 ├── docker-compose.yml
 ├── CLAUDE.md
 └── README.md
 ```
+
+---
+
+## Diagrams
+
+`docs/architecture.drawio` is a four-page editable diagram. Open it at
+[app.diagrams.net](https://app.diagrams.net) (File → Open From → Device) or with the draw.io
+VS Code extension:
+
+| Page | Shows |
+| --- | --- |
+| 1. System Architecture | Every layer from browser to database, with the provider seams |
+| 2. Generation Lifecycle | The async handoff and the polling loop |
+| 3. Data Model | All 11 tables with keys and delete behaviour |
+| 4. Authentication | The three entry paths and the silent-refresh loop |
+
+Throughout: **purple** means a language model is called, **amber** means deterministic logic
+with no model, **blue** means a swappable provider.
 
 ---
 
