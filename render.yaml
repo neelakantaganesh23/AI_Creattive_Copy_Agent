@@ -54,9 +54,24 @@ services:
       - key: GEMINI_PRO_MODEL
         sync: false
 
+      # mock | gemini | stability. Independent of AI_PROVIDER.
       - key: IMAGE_PROVIDER
         sync: false
       - key: GEMINI_IMAGE_MODEL
+        sync: false
+      # Required when IMAGE_PROVIDER=stability.
+      - key: STABILITY_API_KEY
+        sync: false
+
+      # Web search grounding. GROUNDING_ENABLED needs "true" or "false" and
+      # GROUNDING_PROVIDER one of none | mock | gemini | tavily -- neither may be
+      # left blank. One search is issued per generation.
+      - key: GROUNDING_ENABLED
+        sync: false
+      - key: GROUNDING_PROVIDER
+        sync: false
+      # Required when GROUNDING_PROVIDER=tavily.
+      - key: TAVILY_API_KEY
         sync: false
 
       - key: EMAIL_PROVIDER
