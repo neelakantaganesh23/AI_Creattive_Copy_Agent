@@ -179,6 +179,19 @@ class Settings(BaseSettings):
     def _upper_log_level(cls, value: str) -> str:
         return value.upper()
 
+    @field_validator("database_url")
+    @classmethod
+    def _normalise_database_url(cls, value: str) -> str:
+        """Point bare PostgreSQL URLs at psycopg 3.
+
+        Hosted providers hand out ``postgres://`` or ``postgresql://`` URLs, which
+        SQLAlchemy resolves to psycopg2 -- a driver this project does not install.
+        """
+        for prefix in ("postgres://", "postgresql://"):
+            if value.startswith(prefix):
+                return "postgresql+psycopg://" + value[len(prefix) :]
+        return value
+
     @field_validator(
         "gemini_api_key",
         "gemini_flash_model",
