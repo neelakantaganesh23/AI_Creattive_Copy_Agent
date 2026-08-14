@@ -13,6 +13,7 @@ from app.api.deps import (
     RequireEditor,
     generation_rate_limit,
     paginate_response,
+    test_email_rate_limit,
 )
 from app.core.logging import get_logger
 from app.models.enums import Channel, GenerationStatus
@@ -134,3 +135,23 @@ def delete_generation(
 ) -> MessageResponse:
     GenerationService(session).delete(generation_id, user)
     return MessageResponse(message="Generation deleted.")
+
+
+@router.post(
+    "/{generation_id}/send-test-email",
+    response_model=MessageResponse,
+    summary="Send the Email-channel copy to your own inbox",
+)
+async def send_test_email(
+    generation_id: int,
+    session: DbSession,
+    user: RequireEditor,
+    _: Annotated[None, Depends(test_email_rate_limit)],
+) -> MessageResponse:
+    """Self-test-send only: always mails the requesting user's own address.
+
+    There is no recipient field on this request -- the product does not send
+    marketing email to third parties (§25).
+    """
+    await GenerationService(session).send_test_email(generation_id, user)
+    return MessageResponse(message=f"Test email sent to {user.email}.")

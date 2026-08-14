@@ -84,6 +84,11 @@ npm run build
 
 - No server-side rendering.
 - No multi-tenancy; a single organisation is assumed.
-- No marketing email sending or campaign delivery — the product ends at generated, exportable
-  copy. Transactional account email (password reset) is the sole exception and lives behind
-  the `EmailSender` interface in `app/services/email/`.
+- No campaign email delivery to third parties — the product ends at generated, exportable copy.
+  The one exception beyond transactional account email (password reset) is self-test-send:
+  `POST /generations/{id}/send-test-email` mails the Email-channel copy to the requesting
+  user's own address only, so they can preview it in a real inbox. There is no recipient field
+  on that request and no path to arbitrary or list-based recipients — sending to anyone other
+  than the account holder remains out of scope pending consent and unsubscribe handling.
+  All delivery, transactional or self-test, goes through the `EmailSender` interface in
+  `app/services/email/`.
