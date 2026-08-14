@@ -193,15 +193,15 @@ class CopyGenerationAgent:
     name = AgentName.COPY_GENERATION
 
     async def run(self, context: WorkflowContext, recorder: WorkflowRecorder) -> None:
+        request = build_copy_request(context)
+        # The full prompt sent to the model, so an admin can see exactly what
+        # was asked -- including every content rule that was in effect.
         recorder.start(
             self.name,
-            input_summary=(
-                f"channel={context.channel.value} "
-                f"audience={context.audience.name if context.audience else 'unspecified'} "
-                f"language={context.language} rules={len(context.rules)}"
+            input_summary=prompts.full_prompt_for_display(
+                prompts.COPY_INSTRUCTIONS, prompts.build_copy_prompt(request)
             ),
         )
-        request = build_copy_request(context)
         bundle, violations = await generate(request)
 
         context.bundle = bundle

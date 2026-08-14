@@ -38,6 +38,10 @@ os.environ.update(
         "GEMINI_API_KEY": "",
         "GEMINI_FLASH_MODEL": "",
         "GEMINI_PRO_MODEL": "",
+        "GEMINI_IMAGE_MODEL": "",
+        "IMAGE_PROVIDER": "mock",
+        "STABILITY_API_KEY": "",
+        "MEDIA_DIR": str(Path(tempfile.gettempdir()) / "creative_copy_test_media"),
     }
 )
 

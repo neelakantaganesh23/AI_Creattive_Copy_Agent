@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -129,6 +130,13 @@ def create_app() -> FastAPI:
     )
 
     register_exception_handlers(app)
+
+    if settings.image_generation_enabled:
+        from pathlib import Path
+
+        media_dir = Path(settings.media_dir)
+        media_dir.mkdir(parents=True, exist_ok=True)
+        app.mount(settings.media_url_prefix, StaticFiles(directory=media_dir), name="media")
 
     app.include_router(system_routes.router)
     app.include_router(api_router, prefix=settings.api_prefix)

@@ -47,6 +47,8 @@ class OutputParsingAgent:
                 grounded=bool(context.grounding and context.grounding.grounded),
                 provider=info.name,
                 models=info.as_dict(),
+                image_url=context.image_url,
+                image_prompt=context.image_prompt,
             )
         except PydanticValidationError as exc:
             logger.error(

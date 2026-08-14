@@ -68,6 +68,8 @@ export const mockOutput: GenerationOutput = {
     naturalness: 1,
     revisions: 0,
   },
+  image_url: null,
+  image_prompt: null,
   grounded: false,
   provider: 'mock',
   models: { fast: 'mock-fast', quality: 'mock-quality' },

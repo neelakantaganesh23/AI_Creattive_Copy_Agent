@@ -67,6 +67,31 @@ describe('QualityReport', () => {
   });
 });
 
+describe('GeneratedCopyPanel generated image', () => {
+  it('renders the generated image when present', () => {
+    renderWithProviders(
+      <GeneratedCopyPanel
+        output={{ ...mockOutput, image_url: '/media/aeroflex-ab12cd34.png' }}
+        generation={mockGeneration}
+      />,
+      { withAuth: false },
+    );
+
+    const image = screen.getByRole('img', { name: /generated visual/i });
+    expect(image).toHaveAttribute('src', expect.stringContaining('/media/aeroflex-ab12cd34.png'));
+  });
+
+  it('falls back to the CSS placeholder when no image was generated', () => {
+    renderWithProviders(
+      <GeneratedCopyPanel output={{ ...mockOutput, image_url: null }} generation={mockGeneration} />,
+      { withAuth: false },
+    );
+
+    expect(screen.queryByRole('img', { name: /generated visual/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Email Preview')).toBeInTheDocument();
+  });
+});
+
 describe('GeneratedCopyPanel judge results', () => {
   it('shows the judge score and revision count', () => {
     renderWithProviders(

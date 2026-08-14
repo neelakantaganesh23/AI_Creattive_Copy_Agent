@@ -12,7 +12,6 @@ from app.agents.base import WorkflowContext, WorkflowRecorder
 from app.agents.types import ExtractedBrief
 from app.core.logging import get_logger
 from app.models.enums import AgentName
-from app.utils.text import truncate
 
 logger = get_logger("app.agents.extraction")
 
@@ -53,11 +52,19 @@ class DataExtractionAgent:
     name = AgentName.DATA_EXTRACTION
 
     async def run(self, context: WorkflowContext, recorder: WorkflowRecorder) -> None:
-        recorder.start(self.name, input_summary=truncate(context.brief, 240))
+        prompt = prompts.build_extraction_prompt(context.brief, context.language)
+        # The full prompt sent to the model, so an admin can see exactly what
+        # was asked -- not the truncated summary this used to be.
+        recorder.start(
+            self.name,
+            input_summary=prompts.full_prompt_for_display(
+                prompts.EXTRACTION_INSTRUCTIONS, prompt
+            ),
+        )
 
         output = await runtime.run_agent(
             _agent(),
-            prompts.build_extraction_prompt(context.brief, context.language),
+            prompt,
             tier="fast",
             request=(context.brief, context.language),
             mock_builder=mock_content.extraction_fixture,

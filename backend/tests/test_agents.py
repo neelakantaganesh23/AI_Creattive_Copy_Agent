@@ -21,6 +21,7 @@ from app.agents.base import (
 from app.agents.copy_generation import CopyGenerationAgent
 from app.agents.cta import render_template, resolve_cta
 from app.agents.extraction import DataExtractionAgent
+from app.agents.image_generation import ImageGenerationAgent
 from app.agents.orchestrator import GenerationWorkflow
 from app.agents.repetition import analyse_repetition
 from app.agents.rules import (
@@ -42,7 +43,13 @@ from app.core.errors import (
 from app.models.enums import Channel, RuleType, Severity
 from app.schemas.copy_output import CopyBundle, EmailCopy, MobileCopy, SMSCopy
 from app.services.ai.grounding import MockGroundingProvider, NullGroundingProvider
+from app.services.ai.image_generation import MockImageProvider
+from app.services.media import get_media_storage
 from tests.conftest import SAMPLE_BRIEF
+
+
+def _workflow() -> GenerationWorkflow:
+    return GenerationWorkflow(NullGroundingProvider(), get_media_storage(), MockImageProvider())
 
 
 def build_context(**overrides) -> WorkflowContext:
@@ -263,7 +270,7 @@ async def test_cta_rule_is_enforced_after_substitution() -> None:
     """A brand CTA that overruns is trimmed, not left to break the rule."""
     rule = make_rule(rule_type=RuleType.MAX_WORDS, value="2", field_name="cta")
     context = build_context(rules=[rule])
-    output, _ = await GenerationWorkflow(NullGroundingProvider()).run(context, NullRecorder())
+    output, _ = await _workflow().run(context, NullRecorder())
     assert len(output.email.cta.split()) <= 2
 
 
@@ -323,6 +330,71 @@ def test_repetition_detects_reused_phrases() -> None:
     )
     assert score > 0.9
     assert any("run lighter and go farther" in phrase for phrase in phrases)
+
+
+# -- Image generation ---------------------------------------------------------
+async def test_image_generation_produces_a_stored_url() -> None:
+    context = build_context()
+    await DataExtractionAgent().run(context, NullRecorder())
+    await CopyGenerationAgent().run(context, NullRecorder())
+    await ImageGenerationAgent(get_media_storage(), MockImageProvider()).run(
+        context, NullRecorder()
+    )
+
+    assert context.image_url is not None
+    assert context.image_url.startswith("/media/")
+    assert context.image_prompt is not None
+    assert "AeroFlex" in context.image_prompt or context.product is not None
+
+
+def test_image_prompt_never_carries_a_named_person() -> None:
+    """Even when the brief names an endorser, the image prompt must not repeat it."""
+    from app.agents.prompts import build_image_prompt
+
+    prompt = build_image_prompt(
+        headline="Run Lighter.",
+        brand_name="AeroFlex",
+        product_name="AeroFlex Running Shoes",
+        features=["speed", "comfort"],
+        tone="exciting",
+        brand_guidelines=None,
+    )
+    assert "Jordan Blake" not in prompt
+    assert "real, named person" in prompt
+
+
+async def test_image_generation_can_be_disabled(monkeypatch) -> None:
+    from app.core.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "image_generation_enabled", False)
+    context = build_context()
+    await DataExtractionAgent().run(context, NullRecorder())
+    await CopyGenerationAgent().run(context, NullRecorder())
+    await ImageGenerationAgent(get_media_storage(), MockImageProvider()).run(
+        context, NullRecorder()
+    )
+
+    assert context.image_url is None
+
+
+class _FailingImageProvider:
+    name = "failing"
+
+    async def generate(self, _prompt: str):
+        raise AIProviderError()
+
+
+async def test_an_image_outage_does_not_lose_the_copy() -> None:
+    context = build_context()
+    await DataExtractionAgent().run(context, NullRecorder())
+    await CopyGenerationAgent().run(context, NullRecorder())
+    await ImageGenerationAgent(get_media_storage(), _FailingImageProvider()).run(
+        context, NullRecorder()
+    )
+
+    assert context.bundle is not None
+    assert context.image_url is None
+    assert any("Image generation was unavailable" in warning for warning in context.warnings)
 
 
 # -- Content validation -----------------------------------------------------
@@ -391,27 +463,28 @@ def _failing_runtime(monkeypatch, error: Exception) -> None:
 async def test_workflow_surfaces_provider_errors(monkeypatch) -> None:
     _failing_runtime(monkeypatch, AIProviderError())
     with pytest.raises(AIProviderError):
-        await GenerationWorkflow(NullGroundingProvider()).run(build_context(), NullRecorder())
+        await _workflow().run(build_context(), NullRecorder())
 
 
 async def test_workflow_wraps_unexpected_errors(monkeypatch) -> None:
     _failing_runtime(monkeypatch, RuntimeError("boom"))
     with pytest.raises(GenerationFailedError):
-        await GenerationWorkflow(NullGroundingProvider()).run(build_context(), NullRecorder())
+        await _workflow().run(build_context(), NullRecorder())
 
 
 async def test_workflow_reports_invalid_ai_output(monkeypatch) -> None:
     _failing_runtime(monkeypatch, AIInvalidOutputError())
     with pytest.raises(AIInvalidOutputError):
-        await GenerationWorkflow(NullGroundingProvider()).run(build_context(), NullRecorder())
+        await _workflow().run(build_context(), NullRecorder())
 
 
 async def test_workflow_completes_with_the_mock_runtime() -> None:
-    workflow = GenerationWorkflow(NullGroundingProvider())
-    output, duration_ms = await workflow.run(build_context(), NullRecorder())
+    output, duration_ms = await _workflow().run(build_context(), NullRecorder())
     assert output.email.cta == "SHOP AEROFLEX RUNNING SHOES"
     assert output.grounded is False
     assert output.provider == "mock"
+    assert output.image_url is not None
+    assert output.image_url.startswith("/media/")
     assert duration_ms >= 0
 
 

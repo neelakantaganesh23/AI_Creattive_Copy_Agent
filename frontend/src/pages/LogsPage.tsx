@@ -23,7 +23,9 @@ import { getDashboardSummary, listExecutionLogs } from '@/api/dashboard';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorAlert } from '@/components/common/ErrorAlert';
 import { PageHeader } from '@/components/common/PageHeader';
+import { PromptDialog } from '@/components/common/PromptDialog';
 import { StatusChip } from '@/components/common/StatusChip';
+import { useAuth } from '@/hooks/useAuth';
 import type { AgentExecution, DashboardSummary } from '@/types/models';
 import { formatDateTime, formatDuration, formatPercent } from '@/utils/format';
 
@@ -33,12 +35,17 @@ const AGENT_OPTIONS = [
   'copy_generation',
   'repetition_fix',
   'cta_optimization',
+  'image_generation',
+  'content_validation',
   'output_parsing',
 ];
 
 const STATUS_OPTIONS = ['pending', 'in_progress', 'completed', 'failed', 'skipped'];
 
 export const LogsPage = (): JSX.Element => {
+  const { hasRole } = useAuth();
+  const canViewPrompts = hasRole('admin');
+  const [promptLog, setPromptLog] = useState<AgentExecution | null>(null);
   const [logs, setLogs] = useState<AgentExecution[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -200,6 +207,12 @@ export const LogsPage = (): JSX.Element => {
             </FormControl>
           </Stack>
 
+          {canViewPrompts && logs.length > 0 && (
+            <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+              Click a row to view the full prompt sent to the model for that stage.
+            </Typography>
+          )}
+
           {!isLoading && logs.length === 0 ? (
             <EmptyState
               title="No execution logs yet"
@@ -219,25 +232,33 @@ export const LogsPage = (): JSX.Element => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {logs.map((log) => (
-                    <TableRow key={log.id} hover>
-                      <TableCell>#{log.generation_id}</TableCell>
-                      <TableCell>
-                        <Typography variant="body2" fontWeight={600}>
-                          {log.title}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {log.error_message ?? log.description}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>{log.model_name ?? '--'}</TableCell>
-                      <TableCell>{formatDuration(log.duration_ms)}</TableCell>
-                      <TableCell>{formatDateTime(log.started_at)}</TableCell>
-                      <TableCell>
-                        <StatusChip status={log.status} kind="agent" />
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {logs.map((log) => {
+                    const hasPrompt = canViewPrompts && Boolean(log.input_summary);
+                    return (
+                      <TableRow
+                        key={log.id}
+                        hover
+                        onClick={hasPrompt ? () => setPromptLog(log) : undefined}
+                        sx={hasPrompt ? { cursor: 'pointer' } : undefined}
+                      >
+                        <TableCell>#{log.generation_id}</TableCell>
+                        <TableCell>
+                          <Typography variant="body2" fontWeight={600}>
+                            {log.title}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {log.error_message ?? log.description}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>{log.model_name ?? '--'}</TableCell>
+                        <TableCell>{formatDuration(log.duration_ms)}</TableCell>
+                        <TableCell>{formatDateTime(log.started_at)}</TableCell>
+                        <TableCell>
+                          <StatusChip status={log.status} kind="agent" />
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </Box>
@@ -257,6 +278,13 @@ export const LogsPage = (): JSX.Element => {
           />
         </CardContent>
       </Card>
+
+      <PromptDialog
+        open={promptLog !== null}
+        onClose={() => setPromptLog(null)}
+        title={promptLog?.title ?? ''}
+        prompt={promptLog?.input_summary ?? null}
+      />
     </Box>
   );
 };
