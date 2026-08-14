@@ -85,7 +85,18 @@ class PasswordResetService:
         )
         self.session.commit()
 
-        await get_email_sender().send(build_reset_email(user, token))
+        try:
+            await get_email_sender().send(build_reset_email(user, token))
+        except Exception:
+            # This endpoint answers identically whether or not the address is
+            # registered. Letting a transport failure become a 500 would undo that:
+            # an unknown address would still get 200 while a real one errored,
+            # which is exactly the disclosure the early returns above prevent.
+            logger.exception(
+                "password reset email delivery failed", extra={"user_id": user.id}
+            )
+            return
+
         logger.info("password reset email dispatched", extra={"user_id": user.id})
 
     def confirm_reset(self, token: str, new_password: str) -> User:

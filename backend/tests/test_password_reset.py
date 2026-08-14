@@ -68,6 +68,29 @@ def test_request_for_an_unknown_address_looks_identical(client: TestClient, send
     assert len(sender.messages) == 1
 
 
+def test_delivery_failure_stays_indistinguishable(client: TestClient, monkeypatch) -> None:
+    """A broken transport must not make a registered address answer differently.
+
+    Misconfigured delivery is the normal state on a fresh deployment -- an unverified
+    sender domain, a missing key -- so this is the case where the enumeration guard
+    is most likely to be tested in the wild.
+    """
+
+    class FailingSender:
+        name = "failing"
+
+        async def send(self, _message: EmailMessage) -> None:
+            raise ValueError("RESEND_API_KEY is required when EMAIL_PROVIDER=resend.")
+
+    monkeypatch.setattr(password_reset_service, "get_email_sender", lambda: FailingSender())
+
+    known = request_reset(client)
+    unknown = request_reset(client, "nobody@example.com")
+
+    assert known.status_code == unknown.status_code == 200
+    assert known.json() == unknown.json()
+
+
 def test_reset_token_is_stored_only_as_a_hash(client: TestClient, db, sender) -> None:
     request_reset(client)
     token = token_from(sender.messages[0])
