@@ -17,7 +17,8 @@ uvicorn app.main:app --reload
 pytest
 ruff check .
 alembic upgrade head
-python -m app.database.seed
+python -m app.database.seed                  # schema, demo accounts and taxonomy
+python -m app.database.seed --taxonomy-only  # reference data only, for a deployed database
 
 # Frontend (from frontend/)
 npm run dev
