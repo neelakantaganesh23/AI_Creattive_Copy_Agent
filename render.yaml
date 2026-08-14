@@ -74,6 +74,15 @@ services:
       - key: TAVILY_API_KEY
         sync: false
 
+      # Google sign-in. Empty disables it and the login screen hides the button;
+      # the client id is served to the browser by /auth/options and is not secret.
+      # GOOGLE_DEFAULT_ROLE is the role given to accounts created on first sign-in
+      # and must be admin | marketer | viewer -- never blank.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_DEFAULT_ROLE
+        sync: false
+
       - key: EMAIL_PROVIDER
         sync: false
       - key: EMAIL_FROM
