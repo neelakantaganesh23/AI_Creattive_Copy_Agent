@@ -1,17 +1,24 @@
-"""Agent 6: output parsing, validation and logging."""
+"""Agent 7: output parsing, validation and logging."""
 
 from __future__ import annotations
 
 from pydantic import ValidationError as PydanticValidationError
 
+from app.agents import runtime
 from app.agents.base import WorkflowContext, WorkflowRecorder
 from app.core.errors import AIInvalidOutputError
 from app.core.logging import get_logger
-from app.models.enums import AgentName, QualityStatus
-from app.schemas.copy_output import GenerationOutput, check_channel_limits
-from app.services.ai.provider import AIProvider
+from app.models.enums import AgentName, QualityStatus, Severity
+from app.schemas.copy_output import GenerationOutput
 
 logger = get_logger("app.agents.output_parsing")
+
+
+def _quality_status(context: WorkflowContext) -> QualityStatus:
+    """Warnings downgrade; nothing short of a schema failure discards the copy."""
+    if not context.warnings and not context.quality.violations:
+        return QualityStatus.PASSED
+    return QualityStatus.WARNING
 
 
 class OutputParsingAgent:
@@ -19,19 +26,16 @@ class OutputParsingAgent:
 
     name = AgentName.OUTPUT_PARSING
 
-    def __init__(self, provider: AIProvider) -> None:
-        self._provider = provider
-
     async def run(self, context: WorkflowContext, recorder: WorkflowRecorder) -> None:
         assert context.bundle is not None, "copy generation must run before output parsing"
         recorder.start(self.name, input_summary="Validating structured output")
 
-        limit_warnings = check_channel_limits(context.bundle)
-        warnings = [*context.warnings, *limit_warnings]
-        context.quality.warnings = warnings
-        context.quality.status = QualityStatus.WARNING if warnings else QualityStatus.PASSED
+        # De-duplicate: the same violation can be reported by both the rules
+        # engine and the judge.
+        context.quality.warnings = list(dict.fromkeys(context.warnings))
+        context.quality.status = _quality_status(context)
 
-        info = self._provider.info()
+        info = runtime.model_info()
         try:
             output = GenerationOutput(
                 channel=context.channel,
@@ -52,22 +56,27 @@ class OutputParsingAgent:
             recorder.fail(self.name, error="Final output failed schema validation.")
             raise AIInvalidOutputError() from exc
 
+        error_count = sum(
+            1 for v in context.quality.violations if v.severity is Severity.ERROR
+        )
         recorder.complete(
             self.name,
             output={
                 "quality_status": context.quality.status.value,
-                "warnings": warnings,
+                "warnings": context.quality.warnings,
                 "repetition_score": context.quality.repetition_score,
+                "judge_score": context.quality.judge_score,
+                "rule_errors": error_count,
                 "grounded": output.grounded,
             },
         )
-        context.warnings = warnings
+        context.warnings = context.quality.warnings
         context.output = output
         logger.info(
             "generation output validated",
             extra={
                 "generation_id": context.generation_id,
                 "quality_status": context.quality.status.value,
-                "warning_count": len(warnings),
+                "warning_count": len(context.quality.warnings),
             },
         )

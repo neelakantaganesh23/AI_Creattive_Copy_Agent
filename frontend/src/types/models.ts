@@ -52,11 +52,38 @@ export interface SmsCopy {
   description: string;
 }
 
+export type Severity = 'error' | 'warning';
+
+export type RuleType =
+  | 'max_chars'
+  | 'min_chars'
+  | 'max_words'
+  | 'min_words'
+  | 'forbidden_terms'
+  | 'required_terms'
+  | 'regex'
+  | 'guideline';
+
+/** A content rule the copy failed, from the rules engine or the LLM judge. */
+export interface RuleViolation {
+  field: string;
+  severity: Severity;
+  explanation: string;
+  rule_id: number | null;
+  rule_name: string | null;
+  suggestion: string | null;
+}
+
 export interface QualityCheck {
   status: QualityStatus;
   warnings: string[];
   repetition_score: number;
   repetition_fixed: boolean;
+  violations: RuleViolation[];
+  /** Null when the validation stage was skipped or unavailable. */
+  judge_score: number | null;
+  naturalness: number | null;
+  revisions: number;
 }
 
 export interface GenerationOutput {
@@ -186,6 +213,25 @@ export interface CtaRule {
   product_id: number | null;
   channel: Channel | null;
   template: string;
+  priority: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Admin-managed content rule. Machine-checkable types are enforced during
+ *  generation; `guideline` rules are assessed by the LLM judge. */
+export interface Rule {
+  id: number;
+  name: string;
+  description: string | null;
+  rule_type: RuleType;
+  value: string;
+  severity: Severity;
+  channel: Channel | null;
+  field_name: string | null;
+  brand_id: number | null;
+  audience_segment_id: number | null;
   priority: number;
   is_active: boolean;
   created_at: string;

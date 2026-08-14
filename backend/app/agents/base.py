@@ -10,9 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from app.agents.types import ExtractedBrief, GroundingResult, RuleData
 from app.models.enums import AgentName, Channel
-from app.schemas.copy_output import CopyBundle, GenerationOutput, QualityCheck
-from app.services.ai.provider import ExtractedBrief, GroundingResult
+from app.schemas.copy_output import CopyBundle, GenerationOutput, JudgeVerdict, QualityCheck
 
 
 @dataclass(slots=True)
@@ -60,6 +60,8 @@ class WorkflowContext:
     product: ProductData | None = None
     audience: AudienceData | None = None
     cta_rules: list[CTARuleData] = field(default_factory=list)
+    # Admin-managed content rules already narrowed to this generation's scope.
+    rules: list[RuleData] = field(default_factory=list)
     prompt_template: str | None = None
     previous_copy: list[str] = field(default_factory=list)
 
@@ -69,6 +71,7 @@ class WorkflowContext:
     bundle: CopyBundle | None = None
     output: GenerationOutput | None = None
     quality: QualityCheck = field(default_factory=QualityCheck)
+    judge: JudgeVerdict | None = None
     applied_cta_rule_id: int | None = None
     warnings: list[str] = field(default_factory=list)
 

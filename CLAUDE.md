@@ -38,9 +38,22 @@ npm run build
   names anywhere else. Adding a setting means updating `.env.example` too.
 - **Agents** (`app/agents/`) never touch the ORM. They read a plain `WorkflowContext` and report
   progress through the `WorkflowRecorder` protocol; the DB-backed recorder lives in
-  `app/services/generation_service.py`.
-- **AI providers** implement the `AIProvider` protocol in `app/services/ai/provider.py`. Mock and
-  Gemini implementations stay in separate modules and are selected only in `factory.py`.
+  `app/services/generation_service.py`. Each stage is a class with
+  `run(context, recorder)`, listed in order in `orchestrator.py` and mirrored by
+  `AGENT_SEQUENCE`/`AGENT_METADATA` in `app/models/enums.py` — the frontend stepper is driven
+  entirely by that metadata, so adding a stage needs no frontend change.
+- **Models** are Pydantic AI agents. `app/agents/runtime.py` is the only module that constructs
+  one: `AI_PROVIDER=gemini` builds a `GoogleModel` from `GEMINI_FLASH_MODEL`/`GEMINI_PRO_MODEL`,
+  `AI_PROVIDER=mock` builds a `FunctionModel` replaying the fixtures in `mock_content.py`. Always
+  call models through `runtime.run_agent`, which maps Pydantic AI exceptions onto `AppError`
+  subclasses. Prompts live in `app/agents/prompts.py`, never inline.
+- **Content rules** live in the `rules` table and are the single source of truth. Machine-checkable
+  types are enforced by `app/agents/rules.py`, wired as the copy agent's `output_validator`: an
+  `error`-severity violation raises `ModelRetry` so the model corrects itself mid-run, a `warning`
+  is recorded and accepted. `guideline` rules are natural language and are assessed by the judge in
+  `app/agents/validation.py`. The `LIMIT_*` settings only seed the table on a fresh install.
+- **Copy is never discarded over a rule.** When the model cannot satisfy every rule the closest
+  attempt is kept, quality drops to `warning`, and the surviving violations are returned.
 - **Logging:** structured, via `app.core.logging.get_logger`. Never log passwords, tokens, API
   keys or request headers; the formatter redacts credential-like keys as a backstop.
 - **Style:** ruff, line length 100, `from __future__ import annotations`, full type hints.
@@ -61,7 +74,7 @@ npm run build
 
 ## Testing
 
-- Backend: pytest with a temporary SQLite file, mock AI provider, zero stage delay, and rate
+- Backend: pytest with a temporary SQLite file, mock model runtime, zero stage delay, and rate
   limiting disabled (`tests/conftest.py`).
 - Frontend: Vitest + React Testing Library with mocked API modules. `restoreMocks` is on, so
   mock implementations must be re-established in `beforeEach`.

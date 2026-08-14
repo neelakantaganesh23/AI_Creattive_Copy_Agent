@@ -24,6 +24,10 @@ const PAGE_META: Record<string, { title: string; description: string }> = {
     description: 'Define who the copy is written for',
   },
   '/cta-rules': { title: 'CTA Rules', description: 'Deterministic call-to-action rules' },
+  '/rules': {
+    title: 'Content Rules',
+    description: 'Constraints every generated campaign must satisfy',
+  },
   '/logs': { title: 'Logs & Analytics', description: 'Agent execution logs and workflow metrics' },
   '/settings': { title: 'Settings', description: 'Account and runtime configuration' },
 };

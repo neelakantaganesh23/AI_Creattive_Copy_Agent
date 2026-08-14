@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from app.agents.base import WorkflowContext, WorkflowRecorder
+from app.agents.types import GroundingResult
 from app.core.config import settings
 from app.core.errors import GroundingError
 from app.core.logging import get_logger
 from app.models.enums import AgentName
 from app.services.ai.grounding import GroundingProvider
-from app.services.ai.provider import GroundingResult
 
 logger = get_logger("app.agents.grounding")
 

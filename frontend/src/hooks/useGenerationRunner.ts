@@ -43,6 +43,11 @@ export const PENDING_STEPS: Array<Pick<AgentExecution, 'agent_name' | 'title' | 
     description: 'Applying CTA rules and brand guidelines',
   },
   {
+    agent_name: 'content_validation',
+    title: 'Content Validation',
+    description: 'Judging copy against the configured content rules',
+  },
+  {
     agent_name: 'output_parsing',
     title: 'Output Parsing & Logging',
     description: 'Parsing output and logging execution details',

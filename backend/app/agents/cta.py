@@ -9,10 +9,9 @@ from __future__ import annotations
 import re
 
 from app.agents.base import CTARuleData, WorkflowContext, WorkflowRecorder
-from app.core.config import settings
+from app.agents.rules import autofix, evaluate_rules
 from app.core.logging import get_logger
 from app.models.enums import AgentName
-from app.utils.text import truncate
 
 logger = get_logger("app.agents.cta")
 
@@ -74,7 +73,13 @@ def resolve_cta(context: WorkflowContext) -> tuple[str, int | None]:
 
 
 class CTAOptimizationAgent:
-    """Overrides the model's provisional CTA with the deterministic brand rule."""
+    """Overrides the model's provisional CTA with the deterministic brand rule.
+
+    The substituted CTA has not been through the copy agent's rule validator, so
+    the content rules are re-applied here. A brand CTA can only be trimmed, never
+    rewritten -- it is brand-owned text -- so anything :func:`autofix` cannot
+    repair is recorded as a violation for the UI.
+    """
 
     name = AgentName.CTA_OPTIMIZATION
 
@@ -83,16 +88,34 @@ class CTAOptimizationAgent:
         recorder.start(self.name, input_summary=f"{len(context.cta_rules)} active rules")
 
         cta, rule_id = resolve_cta(context)
-        limits = settings.channel_limits
-        context.bundle.email.cta = truncate(cta, limits["email"]["cta"])
-        context.bundle.mobile.cta = truncate(cta, limits["mobile"]["cta"])
+        context.bundle.email.cta = cta
+        context.bundle.mobile.cta = cta
+        context.bundle = autofix(context.bundle, context.rules, context.channel)
         context.applied_cta_rule_id = rule_id
+
+        violations = [
+            violation
+            for violation in evaluate_rules(context.bundle, context.rules, context.channel)
+            if violation.field == "cta"
+        ]
+        for violation in violations:
+            context.quality.violations.append(violation)
+            context.warnings.append(violation.as_warning())
 
         logger.info(
             "cta applied",
-            extra={"generation_id": context.generation_id, "cta_rule_id": rule_id},
+            extra={
+                "generation_id": context.generation_id,
+                "cta_rule_id": rule_id,
+                "violations": len(violations),
+            },
         )
         recorder.complete(
             self.name,
-            output={"cta": context.bundle.email.cta, "rule_id": rule_id, "source": "deterministic"},
+            output={
+                "cta": context.bundle.email.cta,
+                "rule_id": rule_id,
+                "source": "deterministic",
+                "violations": [v.model_dump(mode="json") for v in violations],
+            },
         )

@@ -1,22 +1,22 @@
-"""AI provider interface (§21).
+"""Plain data passed between workflow stages.
 
-Everything the workflow needs from a model lives behind this protocol so the mock
-and Gemini implementations never mix. Concrete providers live in
-``mock_provider.py`` and ``gemini_provider.py``; selection happens in ``factory.py``.
+These types used to live in ``app/services/ai/provider.py`` alongside the bespoke
+``AIProvider`` protocol. That protocol is gone -- Pydantic AI owns the model
+abstraction now -- but the shapes themselves are still the contract between the
+agents, the grounding providers and the persistence layer, so they live here where
+the agents can own them.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol, runtime_checkable
 
 from app.models.enums import Channel
-from app.schemas.copy_output import CopyBundle
 
 
 @dataclass(slots=True)
 class ExtractedBrief:
-    """Structured result of Agent 1 (data extraction)."""
+    """Structured result of the data extraction stage."""
 
     brand: str | None = None
     products: list[str] = field(default_factory=list)
@@ -42,15 +42,6 @@ class ExtractedBrief:
 
 
 @dataclass(slots=True)
-class GroundingResult:
-    """Result of Agent 2 (web search grounding)."""
-
-    grounded: bool = False
-    sources: list[GroundingSourceData] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)
-
-
-@dataclass(slots=True)
 class GroundingSourceData:
     title: str
     url: str
@@ -59,8 +50,41 @@ class GroundingSourceData:
 
 
 @dataclass(slots=True)
+class GroundingResult:
+    """Result of the web search grounding stage."""
+
+    grounded: bool = False
+    sources: list[GroundingSourceData] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class RuleData:
+    """An admin-managed content rule, detached from the ORM."""
+
+    id: int
+    name: str
+    rule_type: str
+    value: str
+    severity: str
+    channel: str | None = None
+    field_name: str | None = None
+    brand_id: int | None = None
+    audience_segment_id: int | None = None
+    description: str | None = None
+    priority: int = 0
+
+    @property
+    def is_deterministic(self) -> bool:
+        """True when the rule can be checked in code rather than by the judge."""
+        from app.models.enums import RuleType
+
+        return self.rule_type != RuleType.GUIDELINE
+
+
+@dataclass(slots=True)
 class CopyRequest:
-    """Everything Agent 3 needs to write the copy."""
+    """Everything the copy generation and revision stages need."""
 
     brief: str
     channel: Channel
@@ -74,41 +98,20 @@ class CopyRequest:
     brand_guidelines: str | None = None
     product_name: str | None = None
     product_features: list[str] = field(default_factory=list)
-    channel_limits: dict[str, dict[str, int]] = field(default_factory=dict)
     prompt_template: str | None = None
+    rules: list[RuleData] = field(default_factory=list)
     # Copy previously produced for other audience segments, used to steer the
     # model away from repeating itself.
     previous_copy: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
-class ProviderInfo:
+class ModelInfo:
+    """Which models the current runtime is wired to, for logging and display."""
+
     name: str
     fast_model: str | None = None
     quality_model: str | None = None
 
     def as_dict(self) -> dict[str, str | None]:
         return {"fast": self.fast_model, "quality": self.quality_model}
-
-
-@runtime_checkable
-class AIProvider(Protocol):
-    """Contract every provider implements."""
-
-    name: str
-
-    def info(self) -> ProviderInfo: ...
-
-    async def extract_brief(self, brief: str, *, language: str) -> ExtractedBrief:
-        """Agent 1: pull structured campaign data out of the raw brief."""
-        ...
-
-    async def generate_copy(self, request: CopyRequest) -> CopyBundle:
-        """Agent 3: produce Email, Mobile and SMS copy."""
-        ...
-
-    async def rewrite_for_variety(
-        self, request: CopyRequest, bundle: CopyBundle, repeated_phrases: list[str]
-    ) -> CopyBundle:
-        """Agent 4: rewrite copy that overlaps previous generations."""
-        ...

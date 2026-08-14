@@ -9,6 +9,7 @@ from app.api.routes import (
     dashboard,
     execution_logs,
     generations,
+    rules,
     templates,
 )
 from app.api.routes import auth as auth_routes
@@ -21,6 +22,7 @@ api_router.include_router(brands.brands_router)
 api_router.include_router(brands.products_router)
 api_router.include_router(audience_segments.router)
 api_router.include_router(cta_rules.router)
+api_router.include_router(rules.router)
 api_router.include_router(templates.router)
 api_router.include_router(execution_logs.router)
 

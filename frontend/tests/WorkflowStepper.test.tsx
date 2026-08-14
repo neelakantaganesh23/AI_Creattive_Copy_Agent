@@ -2,11 +2,12 @@ import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { WorkflowStepper } from '@/components/generate/WorkflowStepper';
+import { PENDING_STEPS } from '@/hooks/useGenerationRunner';
 
 import { buildSteps, renderWithProviders } from './utils';
 
 describe('WorkflowStepper', () => {
-  it('lists all six stages as pending before a run starts', () => {
+  it('lists every stage as pending before a run starts', () => {
     renderWithProviders(<WorkflowStepper />, { withAuth: false });
 
     for (const title of [
@@ -15,11 +16,12 @@ describe('WorkflowStepper', () => {
       'Copy Generation',
       'Repetition Fix',
       'CTA Optimization',
+      'Content Validation',
       'Output Parsing & Logging',
     ]) {
       expect(screen.getByText(title)).toBeInTheDocument();
     }
-    expect(screen.getAllByText('Pending')).toHaveLength(6);
+    expect(screen.getAllByText('Pending')).toHaveLength(PENDING_STEPS.length);
   });
 
   it('reflects reported stage statuses', () => {

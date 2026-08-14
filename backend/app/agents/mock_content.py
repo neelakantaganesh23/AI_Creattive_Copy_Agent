@@ -1,27 +1,25 @@
-"""Deterministic mock AI provider (§21).
+"""Deterministic fixtures for the mock model runtime.
 
-Lets the whole application be exercised without a Gemini key: same interface, same
-timing shape, reproducible output. It is never imported by the Gemini provider and
-announces itself in the logs on every call.
+Lets the whole application be exercised without a Gemini key: reproducible output
+with the same shape a real model produces. Ported from the previous
+``MockAIProvider`` so demo and test output is unchanged apart from rule handling,
+which now comes from the ``rules`` table rather than environment variables.
+
+Nothing here is used when ``AI_PROVIDER=gemini``.
 """
 
 from __future__ import annotations
 
-import asyncio
 import re
+from typing import Any
 
-from app.core.config import settings
+from app.agents import rules as rules_engine
+from app.agents.types import CopyRequest, ExtractedBrief
 from app.core.logging import get_logger
 from app.schemas.copy_output import CopyBundle, EmailCopy, MobileCopy, SMSCopy
-from app.services.ai.provider import (
-    AIProvider,
-    CopyRequest,
-    ExtractedBrief,
-    ProviderInfo,
-)
 from app.utils.text import similarity, truncate
 
-logger = get_logger("app.ai.mock")
+logger = get_logger("app.agents.mock")
 
 # Feature keyword -> marketing noun phrase, so extracted keywords read naturally.
 FEATURE_PHRASES: dict[str, str] = {
@@ -130,162 +128,158 @@ SMS_PATTERNS = (
 VARIATION_COUNT = 12
 
 
-class MockAIProvider:
-    """A rules-based stand-in that mirrors :class:`AIProvider`."""
+# -- Fixture builders (called by the FunctionModel) --------------------------
 
-    name = "mock"
 
-    def info(self) -> ProviderInfo:
-        return ProviderInfo(name=self.name, fast_model="mock-fast", quality_model="mock-quality")
+def extraction_fixture(brief_and_language: Any) -> dict[str, Any]:
+    """Build the extraction output. ``brief_and_language`` is a ``(brief, language)``."""
+    brief, _language = brief_and_language
+    logger.info("mock runtime: extracting brief")
 
-    async def _simulate_latency(self) -> None:
-        delay = max(settings.mock_stage_delay_ms, 0) / 1000
-        if delay:
-            await asyncio.sleep(delay)
+    lowered = brief.lower()
+    features = [keyword for keyword in FEATURE_KEYWORDS if keyword in lowered]
+    # Drop the generic term when the specific phrase already matched.
+    if "responsive cushioning" in features and "cushioning" in features:
+        features.remove("cushioning")
+    if "modern design" in features and "design" in features:
+        features.remove("design")
 
-    # -- Agent 1 -------------------------------------------------------------
-    async def extract_brief(self, brief: str, *, language: str) -> ExtractedBrief:
-        logger.info("mock provider: extracting brief", extra={"provider": self.name})
-        await self._simulate_latency()
+    products = _extract_product_names(brief)
+    return {
+        "brand": products[0].split()[0] if products else None,
+        "products": products,
+        "skus": _extract_skus(brief),
+        "athletes": _extract_named_people(brief),
+        "campaign_goal": _extract_goal(brief),
+        "features": features,
+        "tone": next((keyword for keyword in TONE_KEYWORDS if keyword in lowered), None),
+        "key_message": _extract_key_message(brief),
+    }
 
-        lowered = brief.lower()
-        features = [keyword for keyword in FEATURE_KEYWORDS if keyword in lowered]
-        # Drop the generic term when the specific phrase already matched.
-        if "responsive cushioning" in features and "cushioning" in features:
-            features.remove("cushioning")
-        if "modern design" in features and "design" in features:
-            features.remove("design")
 
-        tone = next((keyword for keyword in TONE_KEYWORDS if keyword in lowered), None)
-        products = _extract_product_names(brief)
-        brand = products[0].split()[0] if products else None
+def copy_fixture(request: Any) -> dict[str, Any]:
+    """Build the copy generation output for a :class:`CopyRequest`."""
+    logger.info("mock runtime: generating copy")
+    bundle = compose(request, variation=len(request.previous_copy))
+    return rules_engine.autofix(bundle, request.rules, request.channel).model_dump()
 
-        return ExtractedBrief(
-            brand=brand,
-            products=products,
-            skus=_extract_skus(brief),
-            athletes=_extract_named_people(brief),
-            campaign_goal=_extract_goal(brief),
-            features=features,
-            tone=tone,
-            key_message=_extract_key_message(brief),
-        )
 
-    # -- Agent 3 -------------------------------------------------------------
-    async def generate_copy(self, request: CopyRequest) -> CopyBundle:
-        logger.info(
-            "mock provider: generating copy",
-            extra={
-                "provider": self.name,
-                "channel": str(request.channel),
-                "language": request.language,
-            },
-        )
-        await self._simulate_latency()
-        return self._compose(request, variation=len(request.previous_copy))
+def variety_fixture(payload: Any) -> dict[str, Any]:
+    """Build the repetition rewrite. ``payload`` is a ``(request, bundle)``."""
+    request, current = payload
+    logger.info("mock runtime: rewriting for variety")
+    rewritten = _least_repetitive_variant(request, current)
+    # The CTA is owned by the deterministic CTA agent and must survive untouched.
+    merged = CopyBundle(
+        email=EmailCopy(
+            headline=rewritten.email.headline,
+            sub_heading=rewritten.email.sub_heading,
+            cta=current.email.cta,
+        ),
+        mobile=MobileCopy(
+            superline=rewritten.mobile.superline,
+            pre_heading=rewritten.mobile.pre_heading,
+            headline=rewritten.mobile.headline,
+            sub_heading=rewritten.mobile.sub_heading,
+            cta=current.mobile.cta,
+        ),
+        sms=SMSCopy(description=rewritten.sms.description),
+    )
+    return rules_engine.autofix(merged, request.rules, request.channel).model_dump()
 
-    # -- Agent 4 -------------------------------------------------------------
-    async def rewrite_for_variety(
-        self, request: CopyRequest, bundle: CopyBundle, repeated_phrases: list[str]
-    ) -> CopyBundle:
-        logger.info(
-            "mock provider: rewriting for variety",
-            extra={"provider": self.name, "repeated_phrases": len(repeated_phrases)},
-        )
-        await self._simulate_latency()
-        # Pick the variant least similar to everything generated before, ignoring
-        # any that reproduces the copy being rewritten. The CTA is left untouched
-        # because it is owned by the deterministic CTA agent.
-        rewritten = self._least_repetitive_variant(request, bundle)
-        return CopyBundle(
-            email=EmailCopy(
-                headline=rewritten.email.headline,
-                sub_heading=rewritten.email.sub_heading,
-                cta=bundle.email.cta,
-            ),
-            mobile=MobileCopy(
-                superline=rewritten.mobile.superline,
-                pre_heading=rewritten.mobile.pre_heading,
-                headline=rewritten.mobile.headline,
-                sub_heading=rewritten.mobile.sub_heading,
-                cta=bundle.mobile.cta,
-            ),
-            sms=SMSCopy(description=rewritten.sms.description),
-        )
 
-    def _least_repetitive_variant(self, request: CopyRequest, current: CopyBundle) -> CopyBundle:
-        """Score every variant against the history and return the freshest one.
+def judge_fixture(payload: Any) -> dict[str, Any]:
+    """The mock judge passes everything.
 
-        Only the fields that vary between variants are scored; the fixed ones
-        (superline, pre-heading) would otherwise saturate the comparison.
-        """
-        history = [*request.previous_copy, *current.text_fields()]
-        best: tuple[float, CopyBundle] | None = None
-        for variation in range(VARIATION_COUNT):
-            candidate = self._compose(request, variation=variation)
-            varying = [
-                candidate.email.headline,
-                candidate.email.sub_heading,
-                candidate.mobile.sub_heading,
-                candidate.sms.description,
-            ]
-            scores = [
-                max((similarity(field, previous) for previous in history), default=0.0)
-                for field in varying
-            ]
-            score = sum(scores) / len(scores)
-            if best is None or score < best[0]:
-                best = (score, candidate)
-        assert best is not None  # VARIATION_COUNT is always >= 1
-        return best[1]
+    Deterministic rules are already enforced in code, so a mock verdict that
+    invents guideline violations would only add noise to local runs and tests.
+    """
+    logger.info("mock runtime: judging copy")
+    return {
+        "passed": True,
+        "score": 1.0,
+        "naturalness": 1.0,
+        "violations": [],
+        "reasoning": "Mock runtime: deterministic rules passed; no guideline review performed.",
+    }
 
-    # -- Composition ---------------------------------------------------------
-    def _compose(self, request: CopyRequest, *, variation: int) -> CopyBundle:
-        limits = request.channel_limits or settings.channel_limits
-        segment_key = _segment_key(request.audience_name)
-        product = request.product_name or _first(request.extracted.products) or "the collection"
-        brand = request.brand_name or request.extracted.brand or "our latest release"
-        features = _feature_phrases(request.extracted.features or request.product_features)
-        closer = _closing_phrase(product, segment_key)
-        provisional_cta = _provisional_cta(request.product_name, request.brand_name)
 
-        headline = _headline(request, segment_key, variation)
-        intro = VARIATION_INTROS[variation % len(VARIATION_INTROS)]
+def revision_fixture(payload: Any) -> dict[str, Any]:
+    """Revision under the mock runtime returns the copy unchanged.
 
-        email_sub = (
-            f"{intro} {product}, engineered for {features[0]}, "
-            f"built for {features[1]}, and designed for {closer}."
-        )
-        fields = {
-            "product": product,
-            "feature_a": features[0],
-            "feature_a_capitalised": features[0].capitalize(),
-            "feature_b": features[1],
-            "closer": SEGMENT_CLOSERS[segment_key],
-        }
-        mobile_sub = MOBILE_SUB_PATTERNS[variation % len(MOBILE_SUB_PATTERNS)].format(**fields)
-        sms_text = SMS_PATTERNS[variation % len(SMS_PATTERNS)].format(**fields)
+    The mock judge never fails, so this only runs if an operator forces a
+    revision; returning the input keeps the workflow well defined.
+    """
+    request, bundle, _violations = payload
+    return rules_engine.autofix(bundle, request.rules, request.channel).model_dump()
 
-        return CopyBundle(
-            email=EmailCopy(
-                headline=truncate(headline, limits["email"]["headline"]),
-                sub_heading=truncate(email_sub, limits["email"]["sub_heading"]),
-                cta=truncate(provisional_cta, limits["email"]["cta"]),
-            ),
-            mobile=MobileCopy(
-                superline=truncate(
-                    SEGMENT_SUPERLINES[segment_key], limits["mobile"]["superline"]
-                ),
-                pre_heading=truncate(
-                    f"{brand} for {request.audience_name or 'everyone'}",
-                    limits["mobile"]["pre_heading"],
-                ),
-                headline=truncate(headline, limits["mobile"]["headline"]),
-                sub_heading=truncate(mobile_sub, limits["mobile"]["sub_heading"]),
-                cta=truncate(provisional_cta, limits["mobile"]["cta"]),
-            ),
-            sms=SMSCopy(description=truncate(sms_text, limits["sms"]["description"])),
-        )
+
+# -- Composition -------------------------------------------------------------
+
+
+def compose(request: CopyRequest, *, variation: int) -> CopyBundle:
+    segment_key = _segment_key(request.audience_name)
+    product = request.product_name or _first(request.extracted.products) or "the collection"
+    brand = request.brand_name or request.extracted.brand or "our latest release"
+    features = _feature_phrases(request.extracted.features or request.product_features)
+    closer = _closing_phrase(product, segment_key)
+    provisional_cta = _provisional_cta(request.product_name, request.brand_name)
+
+    headline = _headline(request, segment_key, variation)
+    intro = VARIATION_INTROS[variation % len(VARIATION_INTROS)]
+
+    email_sub = (
+        f"{intro} {product}, engineered for {features[0]}, "
+        f"built for {features[1]}, and designed for {closer}."
+    )
+    fields = {
+        "product": product,
+        "feature_a": features[0],
+        "feature_a_capitalised": features[0].capitalize(),
+        "feature_b": features[1],
+        "closer": SEGMENT_CLOSERS[segment_key],
+    }
+    mobile_sub = MOBILE_SUB_PATTERNS[variation % len(MOBILE_SUB_PATTERNS)].format(**fields)
+    sms_text = SMS_PATTERNS[variation % len(SMS_PATTERNS)].format(**fields)
+
+    return CopyBundle(
+        email=EmailCopy(headline=headline, sub_heading=email_sub, cta=provisional_cta),
+        mobile=MobileCopy(
+            superline=SEGMENT_SUPERLINES[segment_key],
+            pre_heading=f"{brand} for {request.audience_name or 'everyone'}",
+            headline=headline,
+            sub_heading=mobile_sub,
+            cta=provisional_cta,
+        ),
+        sms=SMSCopy(description=sms_text),
+    )
+
+
+def _least_repetitive_variant(request: CopyRequest, current: CopyBundle) -> CopyBundle:
+    """Score every variant against the history and return the freshest one.
+
+    Only the fields that vary between variants are scored; the fixed ones
+    (superline, pre-heading) would otherwise saturate the comparison.
+    """
+    history = [*request.previous_copy, *current.text_fields()]
+    best: tuple[float, CopyBundle] | None = None
+    for variation in range(VARIATION_COUNT):
+        candidate = compose(request, variation=variation)
+        varying = [
+            candidate.email.headline,
+            candidate.email.sub_heading,
+            candidate.mobile.sub_heading,
+            candidate.sms.description,
+        ]
+        scores = [
+            max((similarity(field, previous) for previous in history), default=0.0)
+            for field in varying
+        ]
+        score = sum(scores) / len(scores)
+        if best is None or score < best[0]:
+            best = (score, candidate)
+    assert best is not None  # VARIATION_COUNT is always >= 1
+    return best[1]
 
 
 def _headline(request: CopyRequest, segment_key: str, variation: int) -> str:
@@ -368,6 +362,9 @@ def _first(values: list[str]) -> str | None:
     return values[0] if values else None
 
 
+# -- Brief parsing -----------------------------------------------------------
+
+
 def _extract_product_names(brief: str) -> list[str]:
     """Find capitalised multi-word product names such as ``AeroFlex Running Shoes``."""
     pattern = re.compile(r"\b([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){1,3})\b")
@@ -411,5 +408,7 @@ def _extract_key_message(brief: str) -> str | None:
     return truncate(match.group(1).split("\n")[0].strip(), 160)
 
 
-# Structural check: the mock must satisfy the provider contract.
-_: AIProvider = MockAIProvider()
+def structured_brief(brief: str, language: str) -> ExtractedBrief:
+    """Convenience wrapper used by tests that want the parsed brief directly."""
+    payload = extraction_fixture((brief, language))
+    return ExtractedBrief(**payload)

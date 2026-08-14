@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   PencilLine,
   Settings,
+  ShieldCheck,
   Target,
   Users,
   Wand2,
@@ -25,6 +26,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Brands & Products', to: '/brands', icon: Building2 },
   { label: 'Audience Segments', to: '/audience-segments', icon: Users },
   { label: 'CTA Rules', to: '/cta-rules', icon: Target },
+  { label: 'Content Rules', to: '/rules', icon: ShieldCheck },
   { label: 'Logs & Analytics', to: '/logs', icon: BarChart3 },
   { label: 'Settings', to: '/settings', icon: Settings },
 ];

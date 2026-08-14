@@ -15,7 +15,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
 from app.core.security import hash_password
-from app.models.enums import Channel, Role
+from app.models.enums import Channel, Role, RuleType, Severity
+from app.repositories.rule_repository import RuleRepository
 from app.repositories.taxonomy_repository import (
     AudienceSegmentRepository,
     BrandRepository,
@@ -103,6 +104,34 @@ PRODUCTS = [
     },
 ]
 
+# Natural-language rules the LLM judge assesses. Everything machine-checkable is
+# generated from the configured character limits in ``_content_rules``.
+CONTENT_GUIDELINES: list[dict[str, object]] = [
+    {
+        "name": "Sounds natural",
+        "description": "Assessed by the content validation judge.",
+        "rule_type": RuleType.GUIDELINE,
+        "value": (
+            "The copy must read like something a person would say out loud. No keyword "
+            "stuffing, no robotic phrasing, no stacked adjectives."
+        ),
+        "severity": Severity.ERROR,
+        "channel": None,
+        "field_name": None,
+        "priority": 50,
+    },
+    {
+        "name": "No internal repetition",
+        "description": "Assessed by the content validation judge.",
+        "rule_type": RuleType.GUIDELINE,
+        "value": "No two fields may reuse the same distinctive phrase or sentence shape.",
+        "severity": Severity.WARNING,
+        "channel": None,
+        "field_name": None,
+        "priority": 50,
+    },
+]
+
 # Highest priority wins; a rule is skipped when its placeholders cannot be filled.
 CTA_RULES = [
     {"template": "SHOP {product}", "priority": 100, "channel": None},
@@ -166,11 +195,37 @@ def seed_users(session: Session) -> None:
         logger.info("seeded user", extra={"email": email, "role": str(role)})
 
 
+def _content_rules() -> list[dict[str, object]]:
+    """Default content rules.
+
+    The character limits come from the ``LIMIT_*`` settings so a fresh install and
+    an upgraded one end up with the same constraints (see migration
+    ``0003_content_rules``).
+    """
+    seeded: list[dict[str, object]] = [
+        {
+            "name": f"{channel.upper()} {field.replace('_', ' ')} length",
+            "description": "Seeded from the configured character limit.",
+            "rule_type": RuleType.MAX_CHARS,
+            "value": str(limit),
+            "severity": Severity.ERROR,
+            "channel": channel,
+            "field_name": field,
+            "priority": 100,
+        }
+        for channel, fields in settings.channel_limits.items()
+        for field, limit in fields.items()
+    ]
+    seeded.extend(CONTENT_GUIDELINES)
+    return seeded
+
+
 def seed_taxonomy(session: Session) -> None:
     brands = BrandRepository(session)
     products = ProductRepository(session)
     segments = AudienceSegmentRepository(session)
     rules = CTARuleRepository(session)
+    content_rules = RuleRepository(session)
     templates = TemplateRepository(session)
 
     for payload in AUDIENCE_SEGMENTS:
@@ -202,6 +257,12 @@ def seed_taxonomy(session: Session) -> None:
         if payload["name"] in existing_names:
             continue
         templates.create(**payload, is_active=True)
+
+    existing_rules = {rule.name for rule in content_rules.list(limit=500)[0]}
+    for payload in _content_rules():
+        if payload["name"] in existing_rules:
+            continue
+        content_rules.create(**payload, is_active=True)
 
 
 def seed_all(session: Session) -> None:

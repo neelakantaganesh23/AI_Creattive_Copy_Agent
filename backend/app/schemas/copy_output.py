@@ -1,16 +1,20 @@
 """Structured AI output schemas (§13).
 
-Character limits are *recommended* rather than hard: exceeding one downgrades the
-quality status to ``warning`` and is surfaced in the UI, but does not discard an
-otherwise valid generation. Limits come from settings so they stay configurable.
+Content rules are enforced during generation: a violation is fed back to the model
+as a correction request rather than being reported after the fact. When the model
+cannot satisfy every rule, the best attempt is kept, the quality status is
+downgraded to ``warning``, and the surviving violations are surfaced in the UI --
+an otherwise valid generation is never discarded.
+
+The field length bounds below are structural sanity limits, not the marketing
+rules; those live in the ``rules`` table and are applied by ``app.agents.rules``.
 """
 
 from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.core.config import settings
-from app.models.enums import Channel, QualityStatus
+from app.models.enums import Channel, QualityStatus, Severity
 
 
 def _clean(value: str) -> str:
@@ -74,11 +78,40 @@ class CopyBundle(BaseModel):
         ]
 
 
+class RuleViolation(BaseModel):
+    """One content rule the copy failed, from either the rules engine or the judge."""
+
+    field: str
+    severity: Severity = Severity.ERROR
+    explanation: str
+    rule_id: int | None = None
+    rule_name: str | None = None
+    suggestion: str | None = None
+
+    def as_warning(self) -> str:
+        label = self.field.replace("_", " ")
+        return f"{label}: {self.explanation}"
+
+
+class JudgeVerdict(BaseModel):
+    """The LLM judge's assessment of a generated bundle."""
+
+    passed: bool = True
+    score: float = Field(default=1.0, ge=0.0, le=1.0)
+    naturalness: float = Field(default=1.0, ge=0.0, le=1.0)
+    violations: list[RuleViolation] = Field(default_factory=list)
+    reasoning: str = ""
+
+
 class QualityCheck(BaseModel):
     status: QualityStatus = QualityStatus.PASSED
     warnings: list[str] = Field(default_factory=list)
     repetition_score: float = 0.0
     repetition_fixed: bool = False
+    violations: list[RuleViolation] = Field(default_factory=list)
+    judge_score: float | None = None
+    naturalness: float | None = None
+    revisions: int = 0
 
 
 class GenerationOutput(BaseModel):
@@ -97,23 +130,3 @@ class GenerationOutput(BaseModel):
     @property
     def bundle(self) -> CopyBundle:
         return CopyBundle(email=self.email, mobile=self.mobile, sms=self.sms)
-
-
-def check_channel_limits(bundle: CopyBundle) -> list[str]:
-    """Return a human-readable warning per field over its configured limit."""
-    limits = settings.channel_limits
-    warnings: list[str] = []
-    for channel, payload in (
-        ("email", bundle.email.model_dump()),
-        ("mobile", bundle.mobile.model_dump()),
-        ("sms", bundle.sms.model_dump()),
-    ):
-        for field, value in payload.items():
-            limit = limits[channel].get(field)
-            if limit is not None and len(value) > limit:
-                label = field.replace("_", " ")
-                warnings.append(
-                    f"{channel.upper()} {label} is {len(value)} characters "
-                    f"(recommended maximum {limit})."
-                )
-    return warnings

@@ -2,13 +2,49 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
+
+from pydantic import BaseModel, Field
+from pydantic_ai import Agent
+
+from app.agents import mock_content, prompts, runtime
 from app.agents.base import WorkflowContext, WorkflowRecorder
+from app.agents.types import ExtractedBrief
 from app.core.logging import get_logger
 from app.models.enums import AgentName
-from app.services.ai.provider import AIProvider
 from app.utils.text import truncate
 
 logger = get_logger("app.agents.extraction")
+
+
+class ExtractionOutput(BaseModel):
+    """Structured facts pulled from the raw brief."""
+
+    brand: str | None = Field(default=None, description="Brand named in the brief, if any.")
+    products: list[str] = Field(default_factory=list)
+    skus: list[str] = Field(default_factory=list)
+    athletes: list[str] = Field(
+        default_factory=list,
+        description="People the brief explicitly names as athlete, ambassador or endorser.",
+    )
+    campaign_goal: str | None = None
+    features: list[str] = Field(default_factory=list)
+    tone: str | None = None
+    key_message: str | None = None
+
+    def to_brief(self) -> ExtractedBrief:
+        return ExtractedBrief(**self.model_dump())
+
+
+@lru_cache
+def _agent() -> Agent[None, ExtractionOutput]:
+    return runtime.build_agent(
+        output_type=ExtractionOutput,
+        instructions=prompts.EXTRACTION_INSTRUCTIONS,
+        name="data_extraction",
+        # Extraction is a reading task; sampling variety only invites invention.
+        temperature=0.0,
+    )
 
 
 class DataExtractionAgent:
@@ -16,14 +52,17 @@ class DataExtractionAgent:
 
     name = AgentName.DATA_EXTRACTION
 
-    def __init__(self, provider: AIProvider) -> None:
-        self._provider = provider
-
     async def run(self, context: WorkflowContext, recorder: WorkflowRecorder) -> None:
         recorder.start(self.name, input_summary=truncate(context.brief, 240))
-        extracted = await self._provider.extract_brief(
-            context.brief, language=context.language
+
+        output = await runtime.run_agent(
+            _agent(),
+            prompts.build_extraction_prompt(context.brief, context.language),
+            tier="fast",
+            request=(context.brief, context.language),
+            mock_builder=mock_content.extraction_fixture,
         )
+        extracted = output.to_brief()
 
         # Selections made in the UI are authoritative over anything inferred.
         if context.brand and not extracted.brand:
@@ -49,5 +88,5 @@ class DataExtractionAgent:
         recorder.complete(
             self.name,
             output=extracted.to_dict(),
-            model_name=self._provider.info().fast_model,
+            model_name=runtime.model_name("fast"),
         )

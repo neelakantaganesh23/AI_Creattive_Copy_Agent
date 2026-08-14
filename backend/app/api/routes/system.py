@@ -5,11 +5,12 @@ from __future__ import annotations
 from fastapi import APIRouter, Response, status
 from sqlalchemy import text
 
+from app.agents.runtime import model_info
 from app.api.deps import CurrentUser, DbSession
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.schemas.common import SystemInfo
-from app.services.ai.factory import get_ai_provider, get_grounding_provider
+from app.services.ai.factory import get_grounding_provider
 
 logger = get_logger("app.api.system")
 
@@ -40,14 +41,15 @@ def ready(session: DbSession, response: Response) -> dict[str, str]:
 @router.get("/system/info", response_model=SystemInfo, summary="Runtime configuration")
 def system_info(_user: CurrentUser) -> SystemInfo:
     """Non-secret configuration for the Settings screen. Never exposes API keys."""
-    provider = get_ai_provider()
+    info = model_info()
     return SystemInfo(
         app_name=settings.app_name,
         app_version=settings.app_version,
         environment=settings.app_env,
-        ai_provider=provider.name,
+        ai_provider=info.name,
         grounding_enabled=settings.grounding_enabled,
         grounding_provider=get_grounding_provider().name,
-        models=provider.info().as_dict(),
+        models=info.as_dict(),
+        # Seed defaults; the live constraints are the rules in the database.
         channel_limits=settings.channel_limits,
     )

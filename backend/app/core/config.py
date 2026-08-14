@@ -104,7 +104,28 @@ class Settings(BaseSettings):
     repetition_history_size: int = 10
     generation_timeout_seconds: float = 120.0
 
-    # -- Channel character limits (configurable per §13 of the spec) ---------
+    # -- Agent runtime -------------------------------------------------------
+    # How many times an agent may be asked to correct itself when its output
+    # fails rule validation, before the best attempt is accepted with warnings.
+    agent_retries: int = Field(default=2, ge=0, le=5)
+    agent_temperature: float = Field(default=0.8, ge=0.0, le=2.0)
+    # Upper bound on model requests within a single agent run.
+    agent_request_limit: int = Field(default=6, ge=1)
+
+    # -- LLM-as-Judge --------------------------------------------------------
+    judge_enabled: bool = True
+    # Verdicts should be stable run to run, so the judge runs much colder than
+    # the copywriter.
+    judge_temperature: float = Field(default=0.1, ge=0.0, le=2.0)
+    judge_min_score: float = Field(default=0.7, ge=0.0, le=1.0)
+    # Rewrites attempted when the judge rejects the copy. Copy is never
+    # discarded: after the last attempt it is returned with warnings.
+    judge_max_revisions: int = Field(default=1, ge=0, le=3)
+
+    # -- Channel character limits --------------------------------------------
+    # Seed defaults only. Once a database exists, content rules are managed by
+    # admins through the Rules UI and the ``rules`` table is authoritative;
+    # these values are used to seed that table on a fresh install.
     limit_email_headline: int = 80
     limit_email_sub_heading: int = 160
     limit_email_cta: int = 40
@@ -178,7 +199,10 @@ class Settings(BaseSettings):
 
     @property
     def channel_limits(self) -> dict[str, dict[str, int]]:
-        """Character limits per channel field, used by validation and prompts."""
+        """Character limits per channel field, used to seed the ``rules`` table.
+
+        Not consulted during generation -- the rules engine reads the database.
+        """
         return {
             "email": {
                 "headline": self.limit_email_headline,

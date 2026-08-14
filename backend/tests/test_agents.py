@@ -1,4 +1,7 @@
-"""Unit tests for the individual agents and the provider abstraction (§18)."""
+"""Unit tests for the individual agents, the rules engine and the judge (§18).
+
+Every test runs on the mock model runtime, so nothing here reaches a network.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +9,7 @@ import json
 
 import pytest
 
+from app.agents import mock_content, runtime
 from app.agents.base import (
     AudienceData,
     BrandData,
@@ -14,9 +18,20 @@ from app.agents.base import (
     ProductData,
     WorkflowContext,
 )
+from app.agents.copy_generation import CopyGenerationAgent
 from app.agents.cta import render_template, resolve_cta
+from app.agents.extraction import DataExtractionAgent
 from app.agents.orchestrator import GenerationWorkflow
 from app.agents.repetition import analyse_repetition
+from app.agents.rules import (
+    applicable_rules,
+    autofix,
+    build_rule_instructions,
+    evaluate_rules,
+    guideline_rules,
+)
+from app.agents.types import ExtractedBrief, RuleData
+from app.agents.validation import ContentValidationAgent
 from app.core.errors import (
     AIInvalidOutputError,
     AINotConfiguredError,
@@ -24,12 +39,9 @@ from app.core.errors import (
     GenerationFailedError,
     GroundingError,
 )
-from app.models.enums import Channel
+from app.models.enums import Channel, RuleType, Severity
 from app.schemas.copy_output import CopyBundle, EmailCopy, MobileCopy, SMSCopy
 from app.services.ai.grounding import MockGroundingProvider, NullGroundingProvider
-from app.services.ai.mock_provider import MockAIProvider
-from app.services.ai.provider import CopyRequest, ExtractedBrief, GroundingResult, ProviderInfo
-from app.utils.json_parsing import JSONRepairFailed, parse_json_object
 from tests.conftest import SAMPLE_BRIEF
 
 
@@ -54,9 +66,40 @@ def build_context(**overrides) -> WorkflowContext:
     return WorkflowContext(**defaults)
 
 
-# -- Mock provider ----------------------------------------------------------
-async def test_mock_extraction_finds_brief_facts() -> None:
-    extracted = await MockAIProvider().extract_brief(SAMPLE_BRIEF, language="English")
+def make_rule(**overrides) -> RuleData:
+    defaults = {
+        "id": 1,
+        "name": "test rule",
+        "rule_type": RuleType.MAX_CHARS,
+        "value": "80",
+        "severity": Severity.ERROR,
+    }
+    defaults.update(overrides)
+    return RuleData(**defaults)
+
+
+def make_bundle(headline: str, **overrides) -> CopyBundle:
+    email = {"headline": headline, "sub_heading": "A sub heading.", "cta": "SHOP NOW"}
+    email.update(overrides.get("email", {}))
+    return CopyBundle(
+        email=EmailCopy(**email),
+        mobile=MobileCopy(
+            superline="NEW",
+            pre_heading="Brand for everyone",
+            headline=headline,
+            sub_heading="A sub heading.",
+            cta="SHOP NOW",
+        ),
+        sms=SMSCopy(description="A short promotional description."),
+    )
+
+
+# -- Mock runtime -----------------------------------------------------------
+async def test_extraction_finds_brief_facts() -> None:
+    context = build_context()
+    await DataExtractionAgent().run(context, NullRecorder())
+    extracted = context.extracted
+    assert extracted is not None
     assert "AeroFlex Running Shoes" in extracted.products
     assert extracted.key_message == "Run lighter. Go farther. Feel unstoppable."
     assert "comfort" in extracted.features
@@ -65,29 +108,163 @@ async def test_mock_extraction_finds_brief_facts() -> None:
     assert extracted.athletes == []
 
 
-async def test_mock_extraction_only_reports_explicit_people() -> None:
+def test_extraction_only_reports_explicit_people() -> None:
     brief = SAMPLE_BRIEF + " The campaign is endorsed by Jordan Blake."
-    extracted = await MockAIProvider().extract_brief(brief, language="English")
-    assert extracted.athletes == ["Jordan Blake"]
+    assert mock_content.structured_brief(brief, "English").athletes == ["Jordan Blake"]
 
 
-async def test_mock_generation_is_deterministic() -> None:
-    provider = MockAIProvider()
-    extracted = await provider.extract_brief(SAMPLE_BRIEF, language="English")
-    request = CopyRequest(
-        brief=SAMPLE_BRIEF,
-        channel=Channel.EMAIL,
-        language="English",
-        extracted=extracted,
-        grounding=GroundingResult(),
-        audience_name="Performance Seekers",
-        product_name="AeroFlex Running Shoes",
-        brand_name="AeroFlex",
+async def test_generation_is_deterministic() -> None:
+    first, second = build_context(), build_context()
+    for context in (first, second):
+        await DataExtractionAgent().run(context, NullRecorder())
+        await CopyGenerationAgent().run(context, NullRecorder())
+
+    assert first.bundle is not None and second.bundle is not None
+    assert first.bundle.model_dump() == second.bundle.model_dump()
+    assert first.bundle.email.headline == "Run Lighter. Go Farther. Feel Unstoppable."
+
+
+# -- Rules engine -----------------------------------------------------------
+def test_max_chars_rule_reports_the_actual_length() -> None:
+    rule = make_rule(rule_type=RuleType.MAX_CHARS, value="10", field_name="headline")
+    violations = evaluate_rules(make_bundle("x" * 25), [rule], Channel.EMAIL)
+    assert len(violations) == 1
+    assert violations[0].field == "headline"
+    assert "25 characters" in violations[0].explanation
+    assert violations[0].rule_id == 1
+
+
+def test_max_words_rule_counts_words() -> None:
+    rule = make_rule(rule_type=RuleType.MAX_WORDS, value="3", field_name="cta")
+    bundle = make_bundle("Fine", email={"cta": "SHOP THE ENTIRE COLLECTION NOW"})
+    violations = evaluate_rules(bundle, [rule], Channel.EMAIL)
+    assert len(violations) == 1
+    assert "5 words" in violations[0].explanation
+
+
+def test_min_chars_rule_flags_short_copy() -> None:
+    rule = make_rule(rule_type=RuleType.MIN_CHARS, value="50", field_name="headline")
+    violations = evaluate_rules(make_bundle("Too short"), [rule], Channel.EMAIL)
+    assert "minimum 50" in violations[0].explanation
+
+
+def test_forbidden_terms_rule() -> None:
+    rule = make_rule(rule_type=RuleType.FORBIDDEN_TERMS, value="guarantee, cheapest")
+    violations = evaluate_rules(
+        make_bundle("The cheapest shoe you can buy"), [rule], Channel.EMAIL
     )
-    first = await provider.generate_copy(request)
-    second = await provider.generate_copy(request)
-    assert first.model_dump() == second.model_dump()
-    assert first.email.headline == "Run Lighter. Go Farther. Feel Unstoppable."
+    assert any("cheapest" in v.explanation for v in violations)
+
+
+def test_required_terms_rule() -> None:
+    rule = make_rule(
+        rule_type=RuleType.REQUIRED_TERMS, value="AeroFlex", field_name="headline"
+    )
+    violations = evaluate_rules(make_bundle("Run lighter today"), [rule], Channel.EMAIL)
+    assert "missing required wording" in violations[0].explanation
+
+
+def test_regex_rule_requires_a_match() -> None:
+    rule = make_rule(rule_type=RuleType.REGEX, value=r"^[A-Z]", field_name="headline")
+    assert evaluate_rules(make_bundle("Capitalised"), [rule], Channel.EMAIL) == []
+    assert evaluate_rules(make_bundle("lowercase"), [rule], Channel.EMAIL)
+
+
+def test_invalid_rule_values_are_ignored_rather_than_crashing() -> None:
+    numeric = make_rule(rule_type=RuleType.MAX_CHARS, value="not a number")
+    bad_regex = make_rule(id=2, rule_type=RuleType.REGEX, value="([unclosed")
+    assert evaluate_rules(make_bundle("Anything"), [numeric, bad_regex], Channel.EMAIL) == []
+
+
+def test_guideline_rules_are_left_to_the_judge() -> None:
+    rule = make_rule(rule_type=RuleType.GUIDELINE, value="Make it sound natural.")
+    assert evaluate_rules(make_bundle("Anything"), [rule], Channel.EMAIL) == []
+    assert guideline_rules([rule]) == [rule]
+
+
+def test_rules_only_evaluate_the_requested_channel() -> None:
+    rule = make_rule(
+        rule_type=RuleType.MAX_CHARS, value="5", channel=Channel.SMS.value, field_name="description"
+    )
+    # The rule is scoped to SMS, so an email generation must ignore it entirely.
+    assert evaluate_rules(make_bundle("A very long email headline"), [rule], Channel.EMAIL) == []
+
+
+def test_a_rule_without_a_field_applies_to_every_field_of_the_channel() -> None:
+    rule = make_rule(rule_type=RuleType.MAX_CHARS, value="5")
+    violations = evaluate_rules(make_bundle("A long headline"), [rule], Channel.EMAIL)
+    assert {v.field for v in violations} == {"headline", "sub_heading", "cta"}
+
+
+def test_applicable_rules_filters_by_scope() -> None:
+    everywhere = make_rule(id=1)
+    other_brand = make_rule(id=2, brand_id=99)
+    this_brand = make_rule(id=3, brand_id=7)
+    other_channel = make_rule(id=4, channel=Channel.SMS.value)
+    other_segment = make_rule(id=5, audience_segment_id=42)
+
+    matched = applicable_rules(
+        [everywhere, other_brand, this_brand, other_channel, other_segment],
+        channel=Channel.EMAIL,
+        brand_id=7,
+        audience_segment_id=3,
+    )
+    assert {rule.id for rule in matched} == {1, 3}
+
+
+def test_applicable_rules_orders_by_priority() -> None:
+    low = make_rule(id=1, priority=10)
+    high = make_rule(id=2, priority=90)
+    matched = applicable_rules(
+        [low, high], channel=Channel.EMAIL, brand_id=None, audience_segment_id=None
+    )
+    assert [rule.id for rule in matched] == [2, 1]
+
+
+def test_rule_instructions_are_rendered_for_the_prompt() -> None:
+    rules = [
+        make_rule(id=1, rule_type=RuleType.MAX_CHARS, value="50", field_name="headline"),
+        make_rule(id=2, rule_type=RuleType.MAX_WORDS, value="3", field_name="cta"),
+        make_rule(id=3, rule_type=RuleType.GUIDELINE, value="Sound natural."),
+    ]
+    text = build_rule_instructions(rules, Channel.EMAIL)
+    assert "at most 50 characters" in text
+    assert "at most 3 words" in text
+    assert "Sound natural." in text
+
+
+def test_rule_instructions_are_empty_without_rules() -> None:
+    assert build_rule_instructions([], Channel.EMAIL) == ""
+
+
+def test_autofix_trims_to_the_limit() -> None:
+    rules = [
+        make_rule(id=1, rule_type=RuleType.MAX_CHARS, value="12", field_name="headline"),
+        make_rule(id=2, rule_type=RuleType.MAX_WORDS, value="2", field_name="cta"),
+    ]
+    fixed = autofix(make_bundle("An extremely long headline indeed"), rules, Channel.EMAIL)
+    assert len(fixed.email.headline) <= 12
+    assert len(fixed.email.cta.split()) <= 2
+    assert evaluate_rules(fixed, rules, Channel.EMAIL) == []
+
+
+# -- Rules inside the workflow ----------------------------------------------
+async def test_copy_generation_satisfies_an_active_rule() -> None:
+    rule = make_rule(rule_type=RuleType.MAX_CHARS, value="30", field_name="headline")
+    context = build_context(rules=[rule])
+    await DataExtractionAgent().run(context, NullRecorder())
+    await CopyGenerationAgent().run(context, NullRecorder())
+
+    assert context.bundle is not None
+    assert len(context.bundle.email.headline) <= 30
+
+
+async def test_cta_rule_is_enforced_after_substitution() -> None:
+    """A brand CTA that overruns is trimmed, not left to break the rule."""
+    rule = make_rule(rule_type=RuleType.MAX_WORDS, value="2", field_name="cta")
+    context = build_context(rules=[rule])
+    output, _ = await GenerationWorkflow(NullGroundingProvider()).run(context, NullRecorder())
+    assert len(output.email.cta.split()) <= 2
 
 
 # -- CTA rules --------------------------------------------------------------
@@ -133,20 +310,6 @@ def test_render_template_skips_unresolvable_placeholders() -> None:
 
 
 # -- Repetition -------------------------------------------------------------
-def make_bundle(headline: str) -> CopyBundle:
-    return CopyBundle(
-        email=EmailCopy(headline=headline, sub_heading="A sub heading.", cta="SHOP NOW"),
-        mobile=MobileCopy(
-            superline="NEW",
-            pre_heading="Brand for everyone",
-            headline=headline,
-            sub_heading="A sub heading.",
-            cta="SHOP NOW",
-        ),
-        sms=SMSCopy(description="A short promotional description."),
-    )
-
-
 def test_repetition_scores_zero_without_history() -> None:
     score, phrases = analyse_repetition(make_bundle("Run lighter today"), [])
     assert score == 0.0
@@ -160,6 +323,45 @@ def test_repetition_detects_reused_phrases() -> None:
     )
     assert score > 0.9
     assert any("run lighter and go farther" in phrase for phrase in phrases)
+
+
+# -- Content validation -----------------------------------------------------
+async def test_validation_records_a_verdict() -> None:
+    context = build_context(rules=[make_rule(rule_type=RuleType.GUIDELINE, value="Be natural.")])
+    await DataExtractionAgent().run(context, NullRecorder())
+    await CopyGenerationAgent().run(context, NullRecorder())
+    await ContentValidationAgent().run(context, NullRecorder())
+
+    assert context.judge is not None
+    assert context.quality.judge_score == 1.0
+    assert context.quality.revisions == 0
+
+
+async def test_validation_can_be_disabled(monkeypatch) -> None:
+    from app.core.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "judge_enabled", False)
+    context = build_context()
+    await DataExtractionAgent().run(context, NullRecorder())
+    await CopyGenerationAgent().run(context, NullRecorder())
+    await ContentValidationAgent().run(context, NullRecorder())
+
+    assert context.judge is None
+
+
+async def test_a_judge_outage_does_not_lose_the_copy(monkeypatch) -> None:
+    async def boom(*_args, **_kwargs):
+        raise AIProviderError()
+
+    monkeypatch.setattr("app.agents.validation.judge", boom)
+    context = build_context()
+    await DataExtractionAgent().run(context, NullRecorder())
+    await CopyGenerationAgent().run(context, NullRecorder())
+    await ContentValidationAgent().run(context, NullRecorder())
+
+    assert context.bundle is not None
+    assert context.judge is None
+    assert any("validation was unavailable" in warning for warning in context.warnings)
 
 
 # -- Grounding --------------------------------------------------------------
@@ -176,73 +378,40 @@ async def test_mock_grounding_returns_sources_for_known_entities() -> None:
     assert result.sources
 
 
-# -- JSON repair ------------------------------------------------------------
-def test_parse_json_object_handles_code_fences() -> None:
-    assert parse_json_object('```json\n{"a": 1}\n```') == {"a": 1}
+# -- Runtime failures -------------------------------------------------------
+def _failing_runtime(monkeypatch, error: Exception) -> None:
+    """Make every model call fail, standing in for a provider outage."""
+
+    async def boom(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(runtime, "run_agent", boom)
 
 
-def test_parse_json_object_handles_surrounding_prose() -> None:
-    assert parse_json_object('Here you go: {"a": 1} Hope that helps!') == {"a": 1}
-
-
-def test_parse_json_object_repairs_trailing_commas() -> None:
-    assert parse_json_object('{"a": 1,}') == {"a": 1}
-
-
-def test_parse_json_object_raises_when_unrecoverable() -> None:
-    with pytest.raises(JSONRepairFailed):
-        parse_json_object("not json at all")
-
-
-# -- Provider failures ------------------------------------------------------
-class FailingProvider:
-    """Stands in for a provider outage."""
-
-    name = "failing"
-
-    def __init__(self, error: Exception) -> None:
-        self._error = error
-
-    def info(self) -> ProviderInfo:
-        return ProviderInfo(name=self.name)
-
-    async def extract_brief(self, brief: str, *, language: str):
-        raise self._error
-
-    async def generate_copy(self, request):  # pragma: no cover - never reached
-        raise self._error
-
-    async def rewrite_for_variety(self, request, bundle, repeated_phrases):
-        raise self._error  # pragma: no cover - never reached
-
-
-async def test_workflow_surfaces_provider_errors() -> None:
-    workflow = GenerationWorkflow(FailingProvider(AIProviderError()), NullGroundingProvider())
+async def test_workflow_surfaces_provider_errors(monkeypatch) -> None:
+    _failing_runtime(monkeypatch, AIProviderError())
     with pytest.raises(AIProviderError):
-        await workflow.run(build_context(), NullRecorder())
+        await GenerationWorkflow(NullGroundingProvider()).run(build_context(), NullRecorder())
 
 
-async def test_workflow_wraps_unexpected_errors() -> None:
-    workflow = GenerationWorkflow(
-        FailingProvider(RuntimeError("boom")), NullGroundingProvider()
-    )
+async def test_workflow_wraps_unexpected_errors(monkeypatch) -> None:
+    _failing_runtime(monkeypatch, RuntimeError("boom"))
     with pytest.raises(GenerationFailedError):
-        await workflow.run(build_context(), NullRecorder())
+        await GenerationWorkflow(NullGroundingProvider()).run(build_context(), NullRecorder())
 
 
-async def test_workflow_reports_invalid_ai_output() -> None:
-    workflow = GenerationWorkflow(
-        FailingProvider(AIInvalidOutputError()), NullGroundingProvider()
-    )
+async def test_workflow_reports_invalid_ai_output(monkeypatch) -> None:
+    _failing_runtime(monkeypatch, AIInvalidOutputError())
     with pytest.raises(AIInvalidOutputError):
-        await workflow.run(build_context(), NullRecorder())
+        await GenerationWorkflow(NullGroundingProvider()).run(build_context(), NullRecorder())
 
 
-async def test_workflow_completes_with_the_mock_provider() -> None:
-    workflow = GenerationWorkflow(MockAIProvider(), NullGroundingProvider())
+async def test_workflow_completes_with_the_mock_runtime() -> None:
+    workflow = GenerationWorkflow(NullGroundingProvider())
     output, duration_ms = await workflow.run(build_context(), NullRecorder())
     assert output.email.cta == "SHOP AEROFLEX RUNNING SHOES"
     assert output.grounded is False
+    assert output.provider == "mock"
     assert duration_ms >= 0
 
 
