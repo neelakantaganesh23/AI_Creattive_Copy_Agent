@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     rate_limit_password_reset: str = "5/hour"
     # Used to build the link in the reset email.
     frontend_base_url: str = "http://localhost:5173"
+    # This backend's own externally-reachable origin. Used to build absolute
+    # media URLs (e.g. a generated image) for contexts, like email, that can't
+    # resolve a path relative to the app.
+    public_base_url: str = "http://localhost:8000"
     email_provider: Literal["console", "smtp", "resend"] = "console"
     email_from: str = "AI Creative Copy Agent <no-reply@example.com>"
     resend_api_key: str | None = None
@@ -79,6 +83,9 @@ class Settings(BaseSettings):
     request_max_bytes: int = 1_048_576
     rate_limit_login: str = "10/minute"
     rate_limit_generation: str = "20/hour"
+    # Self-test-send only ever mails the logged-in user's own inbox, but is
+    # still rate-limited to keep a stray retry loop from hammering the sender.
+    rate_limit_test_email: str = "10/hour"
     rate_limit_enabled: bool = True
 
     # -- AI providers --------------------------------------------------------

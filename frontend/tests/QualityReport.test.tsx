@@ -1,11 +1,51 @@
 import { screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GeneratedCopyPanel } from '@/components/generate/GeneratedCopyPanel';
 import { QualityReport } from '@/components/generate/QualityReport';
 import type { QualityCheck, RuleViolation } from '@/types/models';
 
-import { mockGeneration, mockOutput, renderWithProviders } from './utils';
+vi.mock('@/api/generations', () => ({
+  sendTestEmail: vi.fn(),
+  createGeneration: vi.fn(),
+  getGenerationStatus: vi.fn(),
+  getGeneration: vi.fn(),
+  regenerateGeneration: vi.fn(),
+  listGenerations: vi.fn(),
+  deleteGeneration: vi.fn(),
+}));
+
+// `restoreMocks` clears implementations between tests, so the session mock is
+// re-established in beforeEach rather than inside the factory.
+const refreshSession = vi.fn();
+
+vi.mock('@/api/auth', () => ({
+  login: vi.fn(),
+  register: vi.fn(),
+  refreshSession: () => refreshSession(),
+  logout: vi.fn().mockResolvedValue(undefined),
+  fetchCurrentUser: vi.fn(),
+}));
+
+const SESSION = {
+  access_token: 'token',
+  token_type: 'bearer',
+  expires_in: 1800,
+  user: {
+    id: 2,
+    name: 'Marketing User',
+    email: 'marketer@example.com',
+    role: 'marketer' as const,
+    is_active: true,
+    created_at: '2026-01-01T09:00:00Z',
+  },
+};
+
+const { mockGeneration, mockOutput, renderWithProviders } = await import('./utils');
+
+beforeEach(() => {
+  refreshSession.mockResolvedValue(SESSION);
+});
 
 const violation = (overrides: Partial<RuleViolation> = {}): RuleViolation => ({
   field: 'headline',
@@ -74,7 +114,6 @@ describe('GeneratedCopyPanel generated image', () => {
         output={{ ...mockOutput, image_url: '/media/aeroflex-ab12cd34.png' }}
         generation={mockGeneration}
       />,
-      { withAuth: false },
     );
 
     const image = screen.getByRole('img', { name: /generated visual/i });
@@ -84,7 +123,6 @@ describe('GeneratedCopyPanel generated image', () => {
   it('falls back to the CSS placeholder when no image was generated', () => {
     renderWithProviders(
       <GeneratedCopyPanel output={{ ...mockOutput, image_url: null }} generation={mockGeneration} />,
-      { withAuth: false },
     );
 
     expect(screen.queryByRole('img', { name: /generated visual/i })).not.toBeInTheDocument();
@@ -99,7 +137,6 @@ describe('GeneratedCopyPanel judge results', () => {
         output={{ ...mockOutput, quality: quality({ judge_score: 0.82, revisions: 1 }) }}
         generation={mockGeneration}
       />,
-      { withAuth: false },
     );
 
     expect(screen.getByText('Judge score: 82%')).toBeInTheDocument();
@@ -112,7 +149,6 @@ describe('GeneratedCopyPanel judge results', () => {
         output={{ ...mockOutput, quality: quality({ judge_score: null }) }}
         generation={mockGeneration}
       />,
-      { withAuth: false },
     );
 
     expect(screen.queryByText(/Judge score/)).not.toBeInTheDocument();

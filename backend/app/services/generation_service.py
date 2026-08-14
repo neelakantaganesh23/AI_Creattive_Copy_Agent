@@ -22,8 +22,10 @@ from app.agents.types import RuleData
 from app.core.config import settings
 from app.core.errors import (
     AppError,
+    EmailDeliveryError,
     ErrorCode,
     GenerationFailedError,
+    GenerationNotReadyError,
     NotFoundError,
     PermissionDeniedError,
     ValidationError,
@@ -64,6 +66,7 @@ from app.schemas.generation import (
     GroundingSourceResponse,
 )
 from app.services.ai.factory import get_grounding_provider, get_image_provider
+from app.services.email import build_campaign_email, get_email_sender
 from app.services.media import get_media_storage
 from app.utils.text import slugify_title
 
@@ -434,6 +437,43 @@ class GenerationService:
         if generation.user_id != user.id and Role(user.role) not in _READ_ALL_ROLES:
             raise PermissionDeniedError("You do not have access to this generation.")
         return generation
+
+    # -- Test send -------------------------------------------------------------
+    async def send_test_email(self, generation_id: int, user: User) -> None:
+        """Send the Email-channel copy to the requesting user's own inbox.
+
+        Self-test-send only: the recipient is always the authenticated user
+        making the request. There is no parameter through which anyone else
+        could be targeted (§25 of CLAUDE.md).
+        """
+        generation = self.get_for_user(generation_id, user)
+        if generation.output_json is None:
+            raise GenerationNotReadyError(
+                "This generation has not completed yet; there is no copy to send."
+            )
+        if Channel(generation.channel) is not Channel.EMAIL:
+            raise GenerationNotReadyError(
+                "Only Email-channel generations can be sent as a test email."
+            )
+
+        output = GenerationOutput.model_validate(generation.output_json)
+        brand_name = generation.brand.name if generation.brand else None
+        message = build_campaign_email(output, to=user.email, brand_name=brand_name)
+        try:
+            await get_email_sender().send(message)
+        except Exception as exc:
+            # Sender implementations (Resend, SMTP) raise transport-specific
+            # exceptions; none of them are AppError, so an unhandled one would
+            # otherwise surface as an opaque 500 instead of a clear message.
+            logger.warning(
+                "test email delivery failed",
+                extra={"generation_id": generation_id, "user_id": user.id},
+            )
+            raise EmailDeliveryError() from exc
+        logger.info(
+            "test email dispatched",
+            extra={"generation_id": generation_id, "user_id": user.id},
+        )
 
     def list_for_user(
         self,

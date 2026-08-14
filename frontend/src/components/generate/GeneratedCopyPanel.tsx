@@ -4,6 +4,11 @@ import {
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Divider,
   IconButton,
   Menu,
@@ -26,13 +31,17 @@ import {
   Mail,
   MessageSquare,
   RefreshCw,
+  Send,
   Smartphone,
 } from 'lucide-react';
 import { useState } from 'react';
 
+import { toApiError } from '@/api/client';
+import { sendTestEmail } from '@/api/generations';
 import { StatusChip } from '@/components/common/StatusChip';
 import { EmailPreview } from '@/components/generate/EmailPreview';
 import { QualityReport } from '@/components/generate/QualityReport';
+import { useAuth } from '@/hooks/useAuth';
 import {
   copyToClipboard,
   downloadAsJson,
@@ -61,10 +70,13 @@ export const GeneratedCopyPanel = ({
   onRegenerate,
   isRegenerating = false,
 }: GeneratedCopyPanelProps): JSX.Element => {
+  const { user } = useAuth();
   const [tab, setTab] = useState<Channel>(output.channel);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [downloadAnchor, setDownloadAnchor] = useState<HTMLElement | null>(null);
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   const fields = (
     tab === 'email' ? output.email : tab === 'mobile' ? output.mobile : output.sms
@@ -76,6 +88,20 @@ export const GeneratedCopyPanel = ({
     if (copied) {
       setCopiedField(label);
       setTimeout(() => setCopiedField(null), 1500);
+    }
+  };
+
+  const handleSendTestEmail = async (): Promise<void> => {
+    if (!generation) return;
+    setIsSendingEmail(true);
+    try {
+      const result = await sendTestEmail(generation.id);
+      setToast(result.message);
+      setSendDialogOpen(false);
+    } catch (caught) {
+      setToast(toApiError(caught).message);
+    } finally {
+      setIsSendingEmail(false);
     }
   };
 
@@ -121,6 +147,16 @@ export const GeneratedCopyPanel = ({
             >
               Download
             </Button>
+            {generation && tab === 'email' && (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<Send size={15} />}
+                onClick={() => setSendDialogOpen(true)}
+              >
+                Send test email
+              </Button>
+            )}
             {onRegenerate && (
               <Button
                 size="small"
@@ -157,6 +193,28 @@ export const GeneratedCopyPanel = ({
             Download as TXT
           </MenuItem>
         </Menu>
+
+        <Dialog open={sendDialogOpen} onClose={() => setSendDialogOpen(false)}>
+          <DialogTitle>Send test email?</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              This sends the Email copy shown here, as a real email, to your own inbox
+              {user ? ` (${user.email})` : ''}. It is not sent to anyone else.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setSendDialogOpen(false)} disabled={isSendingEmail}>
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              onClick={() => void handleSendTestEmail()}
+              disabled={isSendingEmail}
+            >
+              {isSendingEmail ? 'Sending...' : 'Send'}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 2 }}>
           <Chip size="small" variant="outlined" label={`Channel: ${CHANNEL_LABELS[output.channel]}`} />

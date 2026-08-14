@@ -96,6 +96,10 @@ def generation_rate_limit(request: Request) -> None:
     enforce_rate_limit("generation", settings.rate_limit_generation, client_identity(request))
 
 
+def test_email_rate_limit(request: Request) -> None:
+    enforce_rate_limit("test_email", settings.rate_limit_test_email, client_identity(request))
+
+
 def paginate_response(items: list, total: int, pagination: PaginationParams) -> dict:
     pages = (total + pagination.page_size - 1) // pagination.page_size if total else 0
     return {

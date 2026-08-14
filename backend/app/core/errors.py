@@ -31,6 +31,8 @@ class ErrorCode:
     INVALID_AUDIENCE_SEGMENT = "INVALID_AUDIENCE_SEGMENT"
     GENERATION_FAILED = "GENERATION_FAILED"
     GENERATION_IN_PROGRESS = "GENERATION_IN_PROGRESS"
+    GENERATION_NOT_READY = "GENERATION_NOT_READY"
+    EMAIL_DELIVERY_FAILED = "EMAIL_DELIVERY_FAILED"
     AI_PROVIDER_ERROR = "AI_PROVIDER_ERROR"
     AI_PROVIDER_TIMEOUT = "AI_PROVIDER_TIMEOUT"
     AI_QUOTA_EXCEEDED = "AI_QUOTA_EXCEEDED"
@@ -119,6 +121,17 @@ class ConflictError(AppError):
 class DuplicateEmailError(ConflictError):
     code = ErrorCode.DUPLICATE_EMAIL
     message = "An account with this email address already exists."
+
+
+class GenerationNotReadyError(ConflictError):
+    code = ErrorCode.GENERATION_NOT_READY
+    message = "This generation cannot be sent yet."
+
+
+class EmailDeliveryError(AppError):
+    status_code = 502
+    code = ErrorCode.EMAIL_DELIVERY_FAILED
+    message = "The email could not be delivered. Please try again shortly."
 
 
 class RateLimitError(AppError):

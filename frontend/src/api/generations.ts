@@ -49,3 +49,11 @@ export const regenerateGeneration = async (id: number): Promise<GenerationDetail
 export const deleteGeneration = async (id: number): Promise<void> => {
   await apiClient.delete(`/generations/${id}`);
 };
+
+export const sendTestEmail = async (id: number): Promise<{ message: string }> => {
+  const { data } = await apiClient.post<{ message: string }>(
+    `/generations/${id}/send-test-email`,
+    {},
+  );
+  return data;
+};
