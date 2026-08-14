@@ -1,0 +1,67 @@
+# Render blueprint for the backend API. The frontend is deployed separately on
+# Vercel and the database is hosted on Supabase; see docs/DEPLOYMENT.md.
+services:
+  - type: web
+    name: ai-creative-copy-agent-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # Free instances have no pre-deploy hook, so migrations run at boot. Alembic
+    # is idempotent, so a restart that runs it again is a no-op.
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: APP_ENV
+        value: production
+      - key: AUTO_CREATE_TABLES
+        value: "false"
+      - key: SEED_ON_STARTUP
+        value: "false"
+      - key: LOG_JSON
+        value: "true"
+
+      # Cross-site: the frontend is on vercel.app, this API is on onrender.com,
+      # so the refresh cookie needs SameSite=None and Secure to be sent at all.
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: none
+
+      - key: JWT_SECRET_KEY
+        generateValue: true
+
+      # Supabase session-pooler connection string.
+      - key: DATABASE_URL
+        sync: false
+      # The Vercel production domain, e.g. https://your-app.vercel.app
+      - key: CORS_ORIGINS
+        sync: false
+      - key: FRONTEND_BASE_URL
+        sync: false
+      # This service's own URL, e.g. https://ai-creative-copy-agent-api.onrender.com
+      - key: PUBLIC_BASE_URL
+        sync: false
+
+      - key: AI_PROVIDER
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_FLASH_MODEL
+        sync: false
+      - key: GEMINI_PRO_MODEL
+        sync: false
+
+      - key: IMAGE_PROVIDER
+        sync: false
+      - key: GEMINI_IMAGE_MODEL
+        sync: false
+
+      - key: EMAIL_PROVIDER
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false

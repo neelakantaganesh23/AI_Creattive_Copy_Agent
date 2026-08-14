@@ -95,12 +95,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("database tables ensured")
         _assert_schema_current(engine)
 
+    from app.database.session import session_scope
+
     if settings.seed_on_startup:
         from app.database.seed import seed_all
-        from app.database.session import session_scope
 
         with session_scope() as session:
             seed_all(session)
+
+    # A generation runs as an in-process background task, so any run still open
+    # belongs to a process that no longer exists.
+    from app.services.generation_service import fail_interrupted_generations
+
+    with session_scope() as session:
+        fail_interrupted_generations(session)
 
     yield
     logger.info("shutting down application")

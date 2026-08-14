@@ -79,6 +79,20 @@ class GenerationRepository(BaseRepository[Generation]):
         total = self.session.scalar(count_statement) or 0
         return items, total
 
+    def list_unfinished(self) -> list[Generation]:
+        """Generations still queued or mid-run, oldest first."""
+        return list(
+            self.session.scalars(
+                select(Generation)
+                .where(
+                    Generation.status.in_(
+                        (GenerationStatus.PENDING, GenerationStatus.RUNNING)
+                    )
+                )
+                .order_by(Generation.id)
+            ).all()
+        )
+
     def recent_completed(
         self, *, limit: int = 5, user_id: int | None = None
     ) -> list[Generation]:

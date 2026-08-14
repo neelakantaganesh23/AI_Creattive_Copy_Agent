@@ -5,10 +5,18 @@ local development only and must be changed or removed before any deployment.
 
 Run standalone with::
 
-    python -m app.database.seed
+    python -m app.database.seed                  # schema, demo accounts and taxonomy
+    python -m app.database.seed --taxonomy-only  # reference data only
+
+``--taxonomy-only`` is the form to point at a deployed database: it creates no
+accounts, prints no passwords, and leaves the schema to Alembic. Reference data
+otherwise has no way in, because ``SEED_ON_STARTUP`` cannot be enabled in
+production and the free hosting tiers offer no shell to run commands from.
 """
 
 from __future__ import annotations
+
+import argparse
 
 from sqlalchemy.orm import Session
 
@@ -273,11 +281,39 @@ def seed_all(session: Session) -> None:
     logger.info("seed data applied")
 
 
-def main() -> None:  # pragma: no cover - CLI entry point
-    from app.database.base import Base
-    from app.database.session import engine, session_scope
+def seed_taxonomy_only(session: Session) -> None:
+    """Seed reference data without creating any account."""
+    seed_taxonomy(session)
+    session.commit()
+    logger.info("taxonomy seed data applied")
+
+
+def main(argv: list[str] | None = None) -> None:  # pragma: no cover - CLI entry point
+    parser = argparse.ArgumentParser(description="Apply seed data to the configured database.")
+    parser.add_argument(
+        "--taxonomy-only",
+        action="store_true",
+        help=(
+            "Seed brands, products, segments, CTA rules, templates and content rules "
+            "only. Creates no accounts and does not create tables; use against a "
+            "deployed database whose schema Alembic already manages."
+        ),
+    )
+    args = parser.parse_args(argv)
+
+    from app.database.session import session_scope
 
     configure_logging()
+
+    if args.taxonomy_only:
+        with session_scope() as session:
+            seed_taxonomy_only(session)
+        print("Taxonomy seed data applied. No accounts were created.")
+        return
+
+    from app.database.base import Base
+    from app.database.session import engine
+
     Base.metadata.create_all(bind=engine)
     with session_scope() as session:
         seed_all(session)
