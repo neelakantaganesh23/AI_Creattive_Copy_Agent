@@ -44,6 +44,7 @@ from app.core.errors import (
     AIQuotaExceededError,
 )
 from app.core.logging import get_logger
+from app.observability import annotate_current_span, traced
 
 logger = get_logger("app.agents.runtime")
 
@@ -175,6 +176,7 @@ def _mock_scope(request: Any, builder: MockBuilder | None) -> Iterator[None]:
         _mock_builder.reset(builder_token)
 
 
+@traced(span_type="llm", ignore_arguments=["agent", "deps", "request", "mock_builder"])
 async def run_agent(
     agent: Agent[DepsT, OutputT],
     prompt: str,
@@ -187,7 +189,9 @@ async def run_agent(
     """Run an agent, mapping every failure onto the application's error types.
 
     ``request`` and ``mock_builder`` are only read by the mock runtime; on the
-    Gemini path they are ignored.
+    Gemini path they are ignored. When Opik tracing is active this is one ``llm``
+    span, renamed to the agent and annotated with the model, provider and token
+    usage; when it is inactive the decorator is a no-op.
     """
     model = _build_model(tier)
     limits = UsageLimits(request_limit=settings.agent_request_limit)
@@ -201,7 +205,30 @@ async def run_agent(
             timeout=settings.gemini_timeout_seconds,
         )
 
+    _annotate_model_span(agent.name, tier, result)
     return result.output
+
+
+def _annotate_model_span(agent_name: str | None, tier: ModelTier, result: Any) -> None:
+    """Rename the current span to the stage and attach model + token usage.
+
+    Best-effort: a missing attribute or a mock run must never disturb the call.
+    """
+    fields: dict[str, Any] = {"name": agent_name or "agent"}
+    resolved = model_name(tier)
+    if resolved:
+        fields["model"] = resolved
+    if not is_mock():
+        fields["provider"] = "google"
+        usage = getattr(result, "usage", None)
+        usage = usage() if callable(usage) else usage
+        if usage is not None:
+            fields["usage"] = {
+                "prompt_tokens": getattr(usage, "input_tokens", None),
+                "completion_tokens": getattr(usage, "output_tokens", None),
+                "total_tokens": getattr(usage, "total_tokens", None),
+            }
+    annotate_current_span(**fields)
 
 
 @contextmanager
@@ -265,6 +292,7 @@ def _image_agent() -> Agent[None, BinaryImage]:
     )
 
 
+@traced(span_type="llm", capture_output=False)
 async def generate_image_via_gemini(prompt: str) -> GeneratedImage:
     """Generate one image from a text prompt using Gemini's native image output.
 

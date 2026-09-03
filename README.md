@@ -20,6 +20,7 @@ provider, and switches to Google Gemini through configuration alone.
 - [API summary](#api-summary)
 - [Database and migrations](#database-and-migrations)
 - [Configuring Gemini](#configuring-gemini)
+- [Observability (Opik)](#observability-opik)
 - [Testing and quality](#testing-and-quality)
 - [Docker](#docker)
 - [Security notes](#security-notes)
@@ -365,6 +366,34 @@ per search. `TAVILY_SEARCH_DEPTH=basic` costs one credit; `advanced` costs more.
 Grounding failure is always recoverable: the run continues from the brief alone, the generation
 is labelled "not externally grounded", and the workflow stepper shows why (bad key, quota
 exhausted, timeout, service down).
+
+---
+
+## Observability (Opik)
+
+Off by default -- the app, and the whole test suite, run with no tracing and no
+network. When enabled, every generation becomes **one trace** in the
+[Opik](https://www.comet.com/opik) UI: a span per workflow stage and a nested
+`llm` span per model call, each carrying the model id, token usage, cost and
+latency. It is the single external seam that follows the same rule as every
+other in this codebase -- config-selected, credential-free default, and a fault
+in it degrades to a log line rather than a failed request.
+
+Turn it on in `backend/.env`:
+
+```dotenv
+OPIK_ENABLED=true
+# Comet cloud: create a free account at comet.com and paste the key.
+OPIK_API_KEY=your-key
+# Or self-host and keep trace data on your own infrastructure -- then the key is
+# optional. Point at your Opik API, e.g.:
+# OPIK_URL_OVERRIDE=http://localhost:5173/api/
+```
+
+Tracing is wired at import time, so set it before the process starts (the normal
+`.env` case). A missing or wrong key is logged at startup and the app continues
+untraced -- it can never block boot. All instrumentation lives in
+`app/observability/`; nothing else imports the Opik SDK.
 
 ---
 
