@@ -40,6 +40,11 @@ os.environ.update(
         "GEMINI_PRO_MODEL": "",
         "GEMINI_IMAGE_MODEL": "",
         "IMAGE_PROVIDER": "mock",
+        # Tracing is never touched by the suite; explicitly off so no test can
+        # inherit a real Opik key from the environment.
+        "OPIK_ENABLED": "false",
+        "OPIK_API_KEY": "",
+        "OPIK_URL_OVERRIDE": "",
         "STABILITY_API_KEY": "",
         "MEDIA_DIR": str(Path(tempfile.gettempdir()) / "creative_copy_test_media"),
     }

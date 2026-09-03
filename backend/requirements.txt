@@ -18,3 +18,6 @@ psycopg[binary]>=3.2.0
 # faster than the rest of the stack. The [google] extra pulls in google-genai,
 # which the Gemini model and the Gemini grounding provider both use.
 pydantic-ai-slim[google]>=2.29,<2.30
+
+# Opik tracing & evaluation (Comet). Only imported when OPIK_ENABLED=true.
+opik>=2.0,<3

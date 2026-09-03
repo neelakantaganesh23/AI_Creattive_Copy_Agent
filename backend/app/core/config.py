@@ -168,6 +168,19 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_json: bool = True
 
+    # -- Opik tracing & evaluation (Comet) -----------------------------------
+    # Disabled by default; the whole app -- and the test suite -- runs with no
+    # tracing and no network. When enabled, every generation becomes one trace
+    # with a span per workflow stage and per model call (tokens, cost, latency).
+    opik_enabled: bool = False
+    opik_api_key: str | None = None
+    opik_workspace: str | None = None
+    opik_project_name: str = "ai-creative-copy-agent"
+    # Point at a self-hosted Opik (e.g. http://localhost:5173/api/) to keep trace
+    # data on your own infrastructure instead of Comet cloud. When set, use_local
+    # is implied and the API key becomes optional.
+    opik_url_override: str | None = None
+
     # -- Development seed users ---------------------------------------------
     seed_admin_email: str = "admin@example.com"
     seed_admin_password: str = "ChangeMe123!"
@@ -204,6 +217,9 @@ class Settings(BaseSettings):
         "smtp_host",
         "smtp_username",
         "smtp_password",
+        "opik_api_key",
+        "opik_workspace",
+        "opik_url_override",
         mode="before",
     )
     @classmethod
@@ -235,6 +251,15 @@ class Settings(BaseSettings):
     @property
     def is_development(self) -> bool:
         return self.app_env in ("development", "test")
+
+    @property
+    def opik_active(self) -> bool:
+        """True only when tracing is on and a destination is configured.
+
+        A self-hosted URL override alone is sufficient (its API key is optional);
+        Comet cloud needs a key.
+        """
+        return self.opik_enabled and bool(self.opik_api_key or self.opik_url_override)
 
     @property
     def google_login_enabled(self) -> bool:

@@ -30,6 +30,7 @@ from app.core.middleware import (
     RequestContextMiddleware,
     SecurityHeadersMiddleware,
 )
+from app.observability import configure_opik, flush_opik
 
 logger = get_logger("app.main")
 
@@ -76,6 +77,7 @@ def _assert_schema_current(engine) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
+    configure_opik()
     logger.info(
         "starting application",
         extra={
@@ -111,6 +113,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         fail_interrupted_generations(session)
 
     yield
+    flush_opik()
     logger.info("shutting down application")
 
 
