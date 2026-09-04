@@ -7,6 +7,7 @@ import {
   FormControl,
   FormHelperText,
   InputLabel,
+  OutlinedInput,
   ListSubheader,
   MenuItem,
   Select,
@@ -18,7 +19,6 @@ import { FileText, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import { useMemo } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 
-import { env } from '@/config/env';
 import {
   BRIEF_MAX_LENGTH,
   BRIEF_MIN_LENGTH,
@@ -61,16 +61,9 @@ const defaultsFor = (
   products: Product[],
   segments: AudienceSegment[],
 ): CampaignBriefFormValues => {
-  if (!env.enableDemoData) {
-    return {
-      brief: '',
-      channel: 'email',
-      brandOrProduct: '',
-      audienceSegmentId: '',
-      language: 'English',
-    };
-  }
-  // Development convenience: pre-select the documented sample campaign (§8).
+  // Always pre-fill a ready-to-run sample brief so the form is never empty on
+  // first load. The brand/segment are only pre-selected when the demo taxonomy
+  // is present (they stay "no specific ..." on an unseeded database).
   const sampleProduct = products.find((item) => item.name === 'AeroFlex Running Shoes');
   const sampleSegment = segments.find((item) => item.name === 'Performance Seekers');
   return {
@@ -183,12 +176,14 @@ export const CampaignBriefForm = ({
                 control={control}
                 render={({ field }) => (
                   <FormControl fullWidth size="small">
-                    <InputLabel id="product-label">2. Brand / Product</InputLabel>
+                    <InputLabel id="product-label" shrink>
+                      2. Brand / Product
+                    </InputLabel>
                     <Select
                       {...field}
                       labelId="product-label"
-                      label="2. Brand / Product"
                       displayEmpty
+                      input={<OutlinedInput notched label="2. Brand / Product" />}
                     >
                       <MenuItem value="">
                         <em>No specific brand or product</em>
@@ -238,12 +233,14 @@ export const CampaignBriefForm = ({
                 control={control}
                 render={({ field }) => (
                   <FormControl fullWidth size="small">
-                    <InputLabel id="segment-label">4. Audience Segment</InputLabel>
+                    <InputLabel id="segment-label" shrink>
+                      4. Audience Segment
+                    </InputLabel>
                     <Select
                       {...field}
                       labelId="segment-label"
-                      label="4. Audience Segment"
                       displayEmpty
+                      input={<OutlinedInput notched label="4. Audience Segment" />}
                     >
                       <MenuItem value="">
                         <em>No specific segment</em>
